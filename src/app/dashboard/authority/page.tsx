@@ -5,14 +5,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
-import { calculateDisplayStatus } from "@/lib/issue-logic";
-import { AlertTriangle, TrendingUp, ShieldAlert, BarChart3, FileText, Download, Filter } from "lucide-react";
+import { PriorityBadge } from "@/components/dashboard/PriorityBadge";
 import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { processAnalytics } from "@/lib/analytics-logic";
+import { calculateSeriousnessScore, getPriorityTag } from "@/lib/priority-logic";
+import { calculateDisplayStatus } from "@/lib/issue-logic";
 import { WardComplaintsChart, StatusDistributionChart, AgeDistributionChart } from "@/components/analytics/AnalyticsCharts";
 import { NegligenceAlerts } from "@/components/analytics/NegligenceAlerts";
 import { Button } from "@/components/ui/button";
+import { Download, Filter, TrendingUp, AlertTriangle } from "lucide-react";
+import { useMemo } from "react";
 
 export default function AuthorityDashboard() {
   const db = useFirestore();
@@ -21,17 +24,22 @@ export default function AuthorityDashboard() {
 
   const stats = issues ? processAnalytics(issues) : null;
 
-  const handleExportCSV = () => {
-    if (!issues) return;
-    const headers = "ID,Ward,Category,Status,SLA Breached,Reported At\n";
-    const rows = issues.map(i => `${i.id},${i.wardId},${i.issueCategoryId},${i.status},${i.isSlaBreached},${i.reportedAt}`).join("\n");
-    const blob = new Blob([headers + rows], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `MCIRS_Governance_Report_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-  };
+  const topCriticalIssues = useMemo(() => {
+    if (!issues) return [];
+    return [...issues]
+      .map(issue => {
+        const score = calculateSeriousnessScore({
+          supportCount: issue.supportCount || 0,
+          isSlaBreached: issue.isSlaBreached || false,
+          reopenCount: issue.reopenCount || 0,
+          wardIssueDensity: issue.wardIssueDensity || 0.5,
+          reportedAt: issue.reportedAt
+        });
+        return { ...issue, seriousnessScore: score };
+      })
+      .sort((a, b) => b.seriousnessScore - a.seriousnessScore)
+      .slice(0, 10);
+  }, [issues]);
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -40,60 +48,103 @@ export default function AuthorityDashboard() {
         <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <h1 className="text-4xl font-headline font-bold text-primary">Governance Intelligence</h1>
-            <p className="text-muted-foreground">City-wide performance oversight and administrative risk analysis.</p>
+            <p className="text-muted-foreground">Impact-weighted prioritization and community-driven oversight.</p>
           </div>
           <div className="flex gap-4">
-            <Button variant="outline" className="rounded-xl h-12 gap-2" onClick={handleExportCSV}>
-              <Download className="h-4 w-4" /> Export CSV
+            <Button variant="outline" className="rounded-xl h-12 gap-2">
+              <Download className="h-4 w-4" /> Governance Report
             </Button>
             <Button className="rounded-xl h-12 gap-2">
-              <Filter className="h-4 w-4" /> Advanced Filters
+              <TrendingUp className="h-4 w-4" /> Support Heatmap
             </Button>
           </div>
         </header>
 
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-pulse">
-            {[1, 2, 3, 4].map(i => <div key={i} className="h-32 bg-muted rounded-xl" />)}
-            <div className="h-96 bg-muted rounded-xl col-span-2" />
-            <div className="h-96 bg-muted rounded-xl" />
-            <div className="h-96 bg-muted rounded-xl" />
+          <div className="animate-pulse space-y-8">
+            <div className="h-32 bg-muted rounded-xl" />
+            <div className="grid grid-cols-2 gap-8">
+              <div className="h-96 bg-muted rounded-xl" />
+              <div className="h-96 bg-muted rounded-xl" />
+            </div>
           </div>
-        ) : stats ? (
+        ) : (
           <>
-            <NegligenceAlerts alerts={stats.alerts} />
+            <NegligenceAlerts alerts={stats?.alerts || { worstWard: '...', worstDept: '...', worstWorker: '...', worstContractor: '...' }} />
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
-              <WardComplaintsChart data={stats.wardStats} />
-              <div className="col-span-1 space-y-8">
-                <StatusDistributionChart data={stats.statusStats} />
-                <AgeDistributionChart data={stats.ageStats} />
-              </div>
-              <Card className="border-none shadow-lg md:col-span-1">
-                 <CardHeader>
-                    <CardTitle>City Health</CardTitle>
-                    <CardDescription>Live MCII Aggregates</CardDescription>
-                 </CardHeader>
-                 <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
+              <Card className="lg:col-span-2 border-none shadow-xl">
+                <CardHeader className="bg-muted/20 border-b">
+                  <div className="flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-bold text-muted-foreground uppercase">Overall Satisfaction</p>
-                        <p className="text-3xl font-bold">4.2 / 5.0</p>
-                        <Badge className="bg-green-100 text-green-700 mt-1">+0.4% MoM</Badge>
+                      <CardTitle className="flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5 text-red-600" />
+                        Top 10 High Priority Issues (CSWPS)
+                      </CardTitle>
+                      <CardDescription>Automatically sorted by Impact-Weighted Seriousness Score.</CardDescription>
                     </div>
-                    <div>
-                        <p className="text-xs font-bold text-muted-foreground uppercase">Budget Compliance</p>
-                        <p className="text-3xl font-bold">94.2%</p>
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-muted-foreground uppercase">Avg. Evidence Rate</p>
-                        <p className="text-3xl font-bold">100%</p>
-                        <p className="text-[10px] text-muted-foreground">Mandatory Closure Applied</p>
-                    </div>
-                 </CardContent>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead>Ticket</TableHead>
+                        <TableHead>Ward</TableHead>
+                        <TableHead>Priority</TableHead>
+                        <TableHead>Support</TableHead>
+                        <TableHead className="text-right">Score</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {topCriticalIssues.map((issue) => (
+                        <TableRow key={issue.id}>
+                          <TableCell className="font-bold text-xs uppercase">{issue.id}</TableCell>
+                          <TableCell className="text-xs">{issue.wardId}</TableCell>
+                          <TableCell>
+                            <PriorityBadge 
+                              impact={getPriorityTag(issue.seriousnessScore)} 
+                              score={issue.seriousnessScore} 
+                            />
+                          </TableCell>
+                          <TableCell className="font-bold">{issue.supportCount || 0}</TableCell>
+                          <TableCell className="text-right font-mono font-bold text-primary">
+                            {issue.seriousnessScore}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
               </Card>
+
+              <div className="space-y-8">
+                <StatusDistributionChart data={stats?.statusStats || []} />
+                <Card className="border-none shadow-lg">
+                   <CardHeader>
+                      <CardTitle>Impact Summary</CardTitle>
+                      <CardDescription>Support Growth Metrics</CardDescription>
+                   </CardHeader>
+                   <CardContent className="space-y-4">
+                      <div className="flex justify-between items-center p-3 bg-primary/5 rounded-xl border border-primary/10">
+                        <p className="text-xs font-bold text-muted-foreground uppercase">Daily Support Trend</p>
+                        <Badge className="bg-green-100 text-green-700">+12%</Badge>
+                      </div>
+                      <div className="flex justify-between items-center p-3 bg-primary/5 rounded-xl border border-primary/10">
+                        <p className="text-xs font-bold text-muted-foreground uppercase">Critical Hotspots</p>
+                        <Badge className="bg-red-100 text-red-700">4 Active</Badge>
+                      </div>
+                   </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <WardComplaintsChart data={stats?.wardStats || []} />
+              <AgeDistributionChart data={stats?.ageStats || []} />
             </div>
           </>
-        ) : null}
+        )}
       </div>
     </div>
   );
