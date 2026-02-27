@@ -10,7 +10,7 @@ import { Camera, MapPin, CheckCircle, Clock, ShieldCheck, AlertTriangle, BarChar
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, doc, updateDoc } from "firebase/firestore";
+import { collection, doc, writeBatch } from "firebase/firestore";
 import { processAnalytics } from "@/lib/analytics-logic";
 import { StatusDistributionChart, AgeDistributionChart } from "@/components/analytics/AnalyticsCharts";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -28,20 +28,39 @@ export default function OfficialDashboard() {
   const { data: issues, isLoading } = useCollection(issuesRef);
   const stats = issues ? processAnalytics(issues) : null;
 
-  const handleResolve = async (id: string) => {
+  const handleResolve = async (issue: any) => {
     try {
-      const issueRef = doc(db, "issues_all", id);
+      const batch = writeBatch(db);
       const proofId = `PR-${Date.now()}`;
+      const resolutionTime = new Date().toISOString();
       
-      // Update with mandatory evidence metadata
-      await updateDoc(issueRef, {
+      const updateData = {
         status: "ResolvedByOfficer",
         resolutionProofId: proofId,
-        resolvedAt: new Date().toISOString(),
+        resolvedAt: resolutionTime,
         isProofVerified: true,
         geoCoordinatesVerified: true,
         timestampVerified: true
+      };
+
+      // Atomic updates to all denormalized paths
+      batch.update(doc(db, "issues_all", issue.id), updateData);
+      batch.update(doc(db, "user_profiles", issue.reportedByUserId, "reported_issues", issue.id), updateData);
+      batch.update(doc(db, "wards", issue.wardId, "issues_for_ward_officers", issue.id), updateData);
+
+      // Create timeline entry
+      const timelineRef = doc(collection(db, "issues_all", issue.id, "timeline"));
+      batch.set(timelineRef, {
+        id: timelineRef.id,
+        issueId: issue.id,
+        timestamp: resolutionTime,
+        eventType: "ResolvedByOfficer",
+        description: "Official has uploaded resolution proof and marked the task as resolved.",
+        actorUserId: user?.uid,
+        relatedProofId: proofId
       });
+
+      await batch.commit();
 
       toast({
         title: "Proof Uploaded & Task Resolved",
@@ -127,7 +146,7 @@ export default function OfficialDashboard() {
                             hasProof: !!issue.resolutionProofId,
                             isProofVerified: issue.isProofVerified || false
                           })} />
-                          <span className="text-sm font-bold text-muted-foreground">Ticket {issue.id}</span>
+                          <span className="text-sm font-bold text-muted-foreground">Ticket #{issue.id}</span>
                         </div>
                         <h3 className="text-2xl font-bold mb-2">{issue.title}</h3>
                         <p className="text-muted-foreground mb-6">{issue.description}</p>
@@ -140,10 +159,13 @@ export default function OfficialDashboard() {
                            <div className="text-center">
                              <CheckCircle className="h-10 w-10 text-green-600 mx-auto mb-2" />
                              <p className="font-bold text-green-700">Proof Submitted</p>
+                             <Button variant="outline" size="sm" className="mt-4" asChild>
+                                <a href={`/issues/${issue.id}`}>View Timeline</a>
+                             </Button>
                            </div>
                          ) : (
                            <>
-                             <Button className="w-full h-14 rounded-xl text-lg gap-2" onClick={() => handleResolve(issue.id)}>
+                             <Button className="w-full h-14 rounded-xl text-lg gap-2" onClick={() => handleResolve(issue)}>
                                <Camera className="h-6 w-6" /> Upload Resolution Proof
                              </Button>
                              <p className="text-[10px] text-center text-muted-foreground">

@@ -13,7 +13,7 @@ import { AlertCircle, History, Image as ImageIcon, MapPin, RefreshCcw, CheckCirc
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
 import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, doc, updateDoc, increment } from "firebase/firestore";
+import { collection, doc, writeBatch, increment } from "firebase/firestore";
 
 export default function CitizenDashboard() {
   const { user } = useUser();
@@ -21,24 +21,42 @@ export default function CitizenDashboard() {
   const { toast } = useToast();
 
   const issuesRef = useMemoFirebase(() => {
-    // In real prod, this should be scoped to current user or ward
     return collection(db, "issues_all");
   }, [db]);
 
   const { data: issues, isLoading } = useCollection(issuesRef);
 
-  const handleSupport = async (id: string) => {
+  const handleSupport = async (issue: any) => {
     if (!user) {
       toast({ title: "Authentication Required", description: "Please login to support civic issues.", variant: "destructive" });
       return;
     }
     
     try {
-      const issueRef = doc(db, "issues_all", id);
-      // Atomic increment for CSWPS integrity
-      await updateDoc(issueRef, {
-        supportCount: increment(1)
+      const batch = writeBatch(db);
+      const masterRef = doc(db, "issues_all", issue.id);
+      
+      // Update all denormalized locations for CSWPS integrity
+      batch.update(masterRef, { supportCount: increment(1) });
+      
+      const citizenRef = doc(db, "user_profiles", issue.reportedByUserId, "reported_issues", issue.id);
+      batch.update(citizenRef, { supportCount: increment(1) });
+      
+      const wardRef = doc(db, "wards", issue.wardId, "issues_for_ward_officers", issue.id);
+      batch.update(wardRef, { supportCount: increment(1) });
+
+      // Add timeline entry
+      const timelineRef = doc(collection(db, "issues_all", issue.id, "timeline"));
+      batch.set(timelineRef, {
+        id: timelineRef.id,
+        issueId: issue.id,
+        timestamp: new Date().toISOString(),
+        eventType: "SupportAdded",
+        description: "A citizen supported this issue, increasing its priority.",
+        actorUserId: user.uid
       });
+
+      await batch.commit();
       toast({ title: "Issue Supported", description: "Your support has increased the seriousness score of this issue." });
     } catch (err: any) {
       toast({ title: "Action Failed", description: err.message, variant: "destructive" });
@@ -52,14 +70,14 @@ export default function CitizenDashboard() {
         supportCount: a.supportCount || 0,
         isSlaBreached: a.isSlaBreached || false,
         reopenCount: a.reopenCount || 0,
-        wardIssueDensity: a.wardIssueDensity || 0.5,
+        wardIssueDensity: 0.5,
         reportedAt: a.reportedAt
       });
       const scoreB = calculateSeriousnessScore({
         supportCount: b.supportCount || 0,
         isSlaBreached: b.isSlaBreached || false,
         reopenCount: b.reopenCount || 0,
-        wardIssueDensity: b.wardIssueDensity || 0.5,
+        wardIssueDensity: 0.5,
         reportedAt: b.reportedAt
       });
       return scoreB - scoreA;
@@ -67,9 +85,9 @@ export default function CitizenDashboard() {
   }, [issues]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20">
       <Navbar />
-      <div className="container mx-auto px-4 pt-32 pb-12">
+      <div className="container mx-auto px-4 pt-32">
         <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-4xl font-headline font-bold text-primary">Community Board</h1>
@@ -92,7 +110,7 @@ export default function CitizenDashboard() {
                 supportCount: issue.supportCount || 0,
                 isSlaBreached: issue.isSlaBreached || false,
                 reopenCount: issue.reopenCount || 0,
-                wardIssueDensity: issue.wardIssueDensity || 0.5,
+                wardIssueDensity: 0.5,
                 reportedAt: issue.reportedAt
               });
               const impact = getPriorityTag(score);
@@ -102,7 +120,7 @@ export default function CitizenDashboard() {
                 isSlaBreached: issue.isSlaBreached || false,
                 reopenCount: issue.reopenCount || 0,
                 hasProof: !!issue.resolutionProofId,
-                isProofVerified: true // Assuming verified for demo
+                isProofVerified: issue.isProofVerified || false
               });
 
               return (
@@ -125,7 +143,7 @@ export default function CitizenDashboard() {
                   <CardContent className="pt-6 flex-grow">
                     <div className="grid grid-cols-2 gap-4 mb-6">
                       <div className="relative aspect-video rounded-xl overflow-hidden bg-muted">
-                        <Image src={issue.beforeImage || "https://picsum.photos/seed/issue/400/300"} alt="Before" fill className="object-cover" />
+                        <Image src={issue.beforeImage || `https://picsum.photos/seed/${issue.id}/400/300`} alt="Before" fill className="object-cover" />
                       </div>
                       <div className="bg-muted/20 rounded-xl p-4 flex flex-col justify-center items-center text-center">
                         <div className="flex items-center gap-2 mb-1">
@@ -133,7 +151,7 @@ export default function CitizenDashboard() {
                           <span className="text-2xl font-bold">{issue.supportCount || 0}</span>
                         </div>
                         <p className="text-[10px] font-bold text-muted-foreground uppercase">Citizen Supports</p>
-                        <Button variant="ghost" size="sm" className="mt-4 gap-2 hover:bg-primary/10" onClick={() => handleSupport(issue.id)}>
+                        <Button variant="ghost" size="sm" className="mt-4 gap-2 hover:bg-primary/10" onClick={() => handleSupport(issue)}>
                           <ThumbsUp className="h-4 w-4" /> Support Issue
                         </Button>
                       </div>
@@ -150,7 +168,7 @@ export default function CitizenDashboard() {
                       <div className="flex items-center gap-2">
                          <MapPin className="h-3 w-3" /> {issue.wardId}
                       </div>
-                      <div>{issue.viewCount || 0} Views</div>
+                      <div>Ticket #{issue.id}</div>
                     </div>
                   </CardContent>
 

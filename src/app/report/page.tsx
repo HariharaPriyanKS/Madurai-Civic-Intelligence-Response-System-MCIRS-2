@@ -14,7 +14,7 @@ import { WARDS, CATEGORIES, SLA_DEADLINES } from "@/lib/constants";
 import { automatedIssueCategorization } from "@/ai/flows/automated-issue-categorization";
 import { useToast } from "@/hooks/use-toast";
 import { useFirestore, useUser } from "@/firebase";
-import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { collection, doc, writeBatch } from "firebase/firestore";
 import { addHours } from "date-fns";
 
 export default function ReportPage() {
@@ -74,13 +74,13 @@ export default function ReportPage() {
 
       const issueData = {
         id: issueId,
-        title: description.substring(0, 50) + "...",
+        title: description.substring(0, 50) + (description.length > 50 ? "..." : ""),
         description,
         reportedByUserId: user.uid,
         wardId: ward,
         issueCategoryId: category,
         reportedAt: now.toISOString(),
-        gpsCoordinates: "10.7904,78.7047", // Mock GPS for prototype
+        gpsCoordinates: "10.7904,78.7047", 
         status: "Created",
         calculatedDisplayStatus: "Yellow",
         isSlaBreached: false,
@@ -91,7 +91,7 @@ export default function ReportPage() {
         isOfflineReport: false,
         language: "en",
         autoDetectedWard: false,
-        beforeImage: `https://picsum.photos/seed/${issueId}/400/300`
+        beforeImage: `https://picsum.photos/seed/${issueId}/800/600`
       };
 
       // 1. Master collection
@@ -105,6 +105,17 @@ export default function ReportPage() {
       // 3. Ward scoped collection
       const wardRef = doc(db, "wards", ward, "issues_for_ward_officers", issueId);
       batch.set(wardRef, issueData);
+
+      // 4. Initial Timeline Entry
+      const timelineRef = doc(collection(db, "issues_all", issueId, "timeline"));
+      batch.set(timelineRef, {
+        id: timelineRef.id,
+        issueId,
+        timestamp: now.toISOString(),
+        eventType: "Created",
+        description: "Issue successfully reported and recorded in the governance ledger.",
+        actorUserId: user.uid
+      });
 
       await batch.commit();
       
@@ -140,9 +151,9 @@ export default function ReportPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20">
       <Navbar />
-      <div className="container mx-auto px-4 pt-32 pb-12">
+      <div className="container mx-auto px-4 pt-32">
         <div className="max-w-3xl mx-auto">
           <header className="mb-10">
             <h1 className="text-4xl font-headline font-bold text-primary mb-2">Report Civic Issue</h1>
