@@ -1,0 +1,585 @@
+{
+  "entities": {
+    "Ward": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Ward",
+      "type": "object",
+      "description": "Represents a geographical ward within Madurai city, used for organizing and assigning civic issues.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Ward entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The official name of the ward (e.g., 'Santhi Nagar')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A brief description or additional details about the ward."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description"
+      ]
+    },
+    "IssueCategory": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "IssueCategory",
+      "type": "object",
+      "description": "Defines the different categories of civic issues that can be reported, often mapping to specific government departments.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the IssueCategory entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the issue category (e.g., 'Solid Waste', 'Roads & Potholes')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A detailed description of what this issue category covers."
+        },
+        "defaultAuthorityChain": {
+          "type": "array",
+          "description": "An ordered list of user role identifiers or names representing the default escalation path for issues in this category. (Relationship: N:N via Role Identifiers)",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "defaultAuthorityChain"
+      ]
+    },
+    "Issue": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Issue",
+      "type": "object",
+      "description": "Represents a civic issue reported by a citizen, tracking its lifecycle from creation to resolution.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Issue entity."
+        },
+        "title": {
+          "type": "string",
+          "description": "A concise summary of the reported issue."
+        },
+        "description": {
+          "type": "string",
+          "description": "Detailed description of the issue provided by the citizen."
+        },
+        "reportedByUserId": {
+          "type": "string",
+          "description": "Reference to the User who reported the issue. (Relationship: User 1:N Issue)"
+        },
+        "wardId": {
+          "type": "string",
+          "description": "Reference to the Ward where the issue is located. (Relationship: Ward 1:N Issue)"
+        },
+        "issueCategoryId": {
+          "type": "string",
+          "description": "Reference to the category the issue belongs to. (Relationship: IssueCategory 1:N Issue)"
+        },
+        "reportedAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the issue was initially reported.",
+          "format": "date-time"
+        },
+        "gpsCoordinates": {
+          "type": "string",
+          "description": "Geographical coordinates (latitude, longitude) where the issue was reported (e.g., '10.7904,78.7047')."
+        },
+        "status": {
+          "type": "string",
+          "description": "The internal lifecycle status of the issue as managed by officials (e.g., 'Created', 'Acknowledged', 'InProgress', 'ResolvedByOfficer', 'Reopened', 'Closed')."
+        },
+        "calculatedDisplayStatus": {
+          "type": "string",
+          "description": "The dynamically determined status for UI display, factoring in proof verification, SLA, and internal status (e.g., 'Yellow', 'Blue', 'Orange', 'Dark Red', 'Red', 'Green')."
+        },
+        "assignedToUserId": {
+          "type": "string",
+          "description": "Reference to the User (official) currently assigned to resolve the issue. (Relationship: User 1:N Issue)"
+        },
+        "acknowledgedAt": {
+          "type": "string",
+          "description": "Timestamp when the issue was officially acknowledged.",
+          "format": "date-time"
+        },
+        "resolutionDeadline": {
+          "type": "string",
+          "description": "The deadline for resolving the issue, based on SLA rules.",
+          "format": "date-time"
+        },
+        "isSlaBreached": {
+          "type": "boolean",
+          "description": "Boolean indicating whether the Service Level Agreement for resolution has been breached."
+        },
+        "initialReportProofId": {
+          "type": "string",
+          "description": "Reference to the Proof entity containing the initial evidence (photo/voice/text) provided by the citizen. (Relationship: Proof 1:1 Issue)"
+        },
+        "resolutionProofId": {
+          "type": "string",
+          "description": "Reference to the Proof entity containing the evidence of resolution uploaded by the official. (Relationship: Proof 1:1 Issue)"
+        },
+        "reopenCount": {
+          "type": "number",
+          "description": "The number of times the issue has been reopened by a citizen."
+        },
+        "isGovernanceIntegrityRisk": {
+          "type": "boolean",
+          "description": "Boolean flag set to true if the issue has been reopened more than a predefined number of times (e.g., 2), indicating a potential governance concern."
+        },
+        "citizenRating": {
+          "type": "number",
+          "description": "Rating (e.g., 1-5 stars) provided by the citizen on the resolution quality."
+        },
+        "isOfflineReport": {
+          "type": "boolean",
+          "description": "Boolean indicating if the issue was reported offline and later synchronized."
+        },
+        "language": {
+          "type": "string",
+          "description": "The language used when the issue was reported (e.g., 'en' for English, 'ta' for Tamil)."
+        },
+        "autoDetectedWard": {
+          "type": "boolean",
+          "description": "Boolean indicating if the ward was automatically detected via GPS or manually selected."
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "description",
+        "reportedByUserId",
+        "wardId",
+        "issueCategoryId",
+        "reportedAt",
+        "gpsCoordinates",
+        "status",
+        "calculatedDisplayStatus",
+        "isSlaBreached",
+        "reopenCount",
+        "isGovernanceIntegrityRisk",
+        "isOfflineReport",
+        "language",
+        "autoDetectedWard"
+      ]
+    },
+    "Proof": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Proof",
+      "type": "object",
+      "description": "Stores evidence (photos, audio, video) related to civic issues, including 'before' and 'after' proofs with validation metadata.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Proof entity."
+        },
+        "issueId": {
+          "type": "string",
+          "description": "Reference to the Issue this proof is associated with. (Relationship: Issue 1:N Proof)"
+        },
+        "type": {
+          "type": "string",
+          "description": "The type of proof, either 'initialReport' (by citizen) or 'resolution' (by official)."
+        },
+        "fileUrl": {
+          "type": "string",
+          "description": "Secure URL where the proof file (image, audio, video) is stored.",
+          "format": "uri"
+        },
+        "uploadedAt": {
+          "type": "string",
+          "description": "Timestamp when the proof file was uploaded.",
+          "format": "date-time"
+        },
+        "uploadedByUserId": {
+          "type": "string",
+          "description": "Reference to the User who uploaded this proof. (Relationship: User 1:N Proof)"
+        },
+        "geoCoordinates": {
+          "type": "string",
+          "description": "Geographical coordinates (latitude, longitude) captured at the time and location of proof upload (e.g., '10.7904,78.7047')."
+        },
+        "hasExifData": {
+          "type": "boolean",
+          "description": "Boolean indicating if the uploaded file contained EXIF metadata."
+        },
+        "isExifTimestampValid": {
+          "type": "boolean",
+          "description": "Boolean indicating if the EXIF timestamp in the proof file aligns with `uploadedAt` within an acceptable variance."
+        },
+        "isExifGeolocationValid": {
+          "type": "boolean",
+          "description": "Boolean indicating if the EXIF geolocation in the proof file aligns with `geoCoordinates` within an acceptable variance."
+        },
+        "isFileIntegrityValidated": {
+          "type": "boolean",
+          "description": "Boolean indicating if the file integrity (e.g., checksum, format) of the uploaded proof passed validation."
+        },
+        "isProofVerified": {
+          "type": "boolean",
+          "description": "Overall verification status of the proof, true only if all relevant validation checks (EXIF, geolocation, file integrity) pass for its type."
+        },
+        "verificationDetails": {
+          "type": "string",
+          "description": "A string providing specific details or reasons for proof verification status (e.g., 'EXIF geo mismatch', 'All checks passed')."
+        }
+      },
+      "required": [
+        "id",
+        "issueId",
+        "type",
+        "fileUrl",
+        "uploadedAt",
+        "uploadedByUserId",
+        "geoCoordinates",
+        "hasExifData",
+        "isExifTimestampValid",
+        "isExifGeolocationValid",
+        "isFileIntegrityValidated",
+        "isProofVerified",
+        "verificationDetails"
+      ]
+    },
+    "AuditLog": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "AuditLog",
+      "type": "object",
+      "description": "Records all critical actions and changes within the system for security, compliance, and accountability.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the AuditLog entry."
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The exact date and time when the auditable action occurred.",
+          "format": "date-time"
+        },
+        "userId": {
+          "type": "string",
+          "description": "Reference to the User who performed the action, or null if it was a system-generated action. (Relationship: User 1:N AuditLog)"
+        },
+        "actionType": {
+          "type": "string",
+          "description": "Describes the type of action performed (e.g., 'ISSUE_CREATED', 'PROOF_UPLOADED', 'STATUS_UPDATED', 'ISSUE_REOPENED', 'SLA_BREACHED', 'PROOF_DELETED', 'ENTITY_READ', 'CONFIG_UPDATED')."
+        },
+        "entityType": {
+          "type": "string",
+          "description": "The type of data entity affected by the action (e.g., 'Issue', 'Proof', 'Ward', 'IssueCategory')."
+        },
+        "entityId": {
+          "type": "string",
+          "description": "The unique identifier of the entity that was affected."
+        },
+        "details": {
+          "type": "string",
+          "description": "A string containing additional context or structured data (e.g., JSON string) about the action, such as old and new values for updates, or specific error messages."
+        },
+        "ipAddress": {
+          "type": "string",
+          "description": "The IP address from which the action originated, for security and tracing."
+        }
+      },
+      "required": [
+        "id",
+        "timestamp",
+        "actionType",
+        "entityType",
+        "entityId",
+        "details",
+        "ipAddress"
+      ]
+    },
+    "IssueTimelineEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "IssueTimelineEntry",
+      "type": "object",
+      "description": "Captures a chronological sequence of significant events and changes related to a specific civic issue, forming its resolution timeline.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the IssueTimelineEntry."
+        },
+        "issueId": {
+          "type": "string",
+          "description": "Reference to the Issue to which this timeline entry belongs. (Relationship: Issue 1:N IssueTimelineEntry)"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "The date and time when the event occurred.",
+          "format": "date-time"
+        },
+        "eventType": {
+          "type": "string",
+          "description": "Describes the nature of the event (e.g., 'Created', 'Acknowledged', 'Assigned', 'ProofUploaded', 'StatusChanged', 'Escalated', 'Reopened', 'Rated', 'ResolutionProofVerified', 'SLA_Breached')."
+        },
+        "description": {
+          "type": "string",
+          "description": "A human-readable narrative explaining the event."
+        },
+        "actorUserId": {
+          "type": "string",
+          "description": "Reference to the User who initiated this event (e.g., the official who updated the status, or the citizen who reopened the issue). Can be null if system-generated. (Relationship: User 1:N IssueTimelineEntry)"
+        },
+        "relatedProofId": {
+          "type": "string",
+          "description": "Optional reference to a Proof entity if the timeline event is directly related to a proof upload or verification. (Relationship: Proof 1:N IssueTimelineEntry)"
+        },
+        "oldValue": {
+          "type": "string",
+          "description": "Optional string representation of a relevant property's value before the event (e.g., old status)."
+        },
+        "newValue": {
+          "type": "string",
+          "description": "Optional string representation of a relevant property's value after the event (e.g., new status)."
+        }
+      },
+      "required": [
+        "id",
+        "issueId",
+        "timestamp",
+        "eventType",
+        "description"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/user_profiles/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores user profiles, including assigned roles and geographical scope for authorization (e.g., `wardIds` for Ward Officers, `zoneId` for Zonal Officers). This enables DBAC. Accessible only by the user themselves for read/update of their profile, and by System Admin for CRUD. (Assumes a 'User' entity is defined in the backend schema).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique Firebase Authentication UID of the user."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_admin/{userId}",
+        "definition": {
+          "entityName": "AdminRole",
+          "schema": {
+            "$ref": "#/backend/entities/AdminRole"
+          },
+          "description": "Dedicated collection for system administrator roles. Presence of a document signifies admin status (existence over content), enabling simple, robust DBAC. Admin can access all data across the system. (Assumes an 'AdminRole' entity, or similar 'Role' entity, is defined in the backend schema).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique Firebase Authentication UID of the administrator."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/wards/{wardId}",
+        "definition": {
+          "entityName": "Ward",
+          "schema": {
+            "$ref": "#/backend/entities/Ward"
+          },
+          "description": "Master configuration data for all geographical wards within Madurai. Read-only for most users, editable by System Admin. Includes ward names and descriptions for display and operational management.",
+          "params": [
+            {
+              "name": "wardId",
+              "description": "The unique identifier for a specific ward (e.g., 'W1', 'W2')."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/issue_categories/{categoryId}",
+        "definition": {
+          "entityName": "IssueCategory",
+          "schema": {
+            "$ref": "#/backend/entities/IssueCategory"
+          },
+          "description": "Master configuration data for all predefined issue categories (e.g., 'Solid Waste', 'Roads & Potholes'). Read-only for most users, editable by System Admin. Includes default escalation chains.",
+          "params": [
+            {
+              "name": "categoryId",
+              "description": "The unique identifier for an issue category."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/issues_all/{issueId}",
+        "definition": {
+          "entityName": "Issue",
+          "schema": {
+            "$ref": "#/backend/entities/Issue"
+          },
+          "description": "The central, master collection for all civic issues reported in Madurai. Serves as the immutable record for all issue details. Commissioner, Collector, and Admin roles have full read access for city-wide oversight. Used for public portal aggregated data. Includes denormalized `reportedByUserId`, `assignedToUserId`, and `wardId` for efficient querying and rule validation. The `status` and `calculatedDisplayStatus` fields implement explicit state modeling for governance integrity.",
+          "params": [
+            {
+              "name": "issueId",
+              "description": "The unique identifier for a specific civic issue."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/issues_all/{issueId}/proofs/{proofId}",
+        "definition": {
+          "entityName": "Proof",
+          "schema": {
+            "$ref": "#/backend/entities/Proof"
+          },
+          "description": "Subcollection containing all proof attachments (initial report by citizen, resolution proof by official) for a specific issue. Documents include denormalized `issueId`, `uploadedByUserId`, `issueOwnerId` (same as `Issue.reportedByUserId`), `issueAssignedToId` (same as `Issue.assignedToUserId`), and `wardId` for authorization independence. Proof documents are strictly controlled; deletion requires admin authorization. The `isProofVerified` field reflects backend validation.",
+          "params": [
+            {
+              "name": "issueId",
+              "description": "The unique identifier of the parent issue."
+            },
+            {
+              "name": "proofId",
+              "description": "The unique identifier for a specific proof document."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/issues_all/{issueId}/timeline/{timelineEntryId}",
+        "definition": {
+          "entityName": "IssueTimelineEntry",
+          "schema": {
+            "$ref": "#/backend/entities/IssueTimelineEntry"
+          },
+          "description": "Subcollection tracking the chronological lifecycle events of a specific issue (e.g., 'Created', 'Acknowledged', 'ProofUploaded', 'Reopened'). Documents include denormalized `issueId`, `actorUserId`, `issueOwnerId` (same as `Issue.reportedByUserId`), `issueAssignedToId` (same as `Issue.assignedToUserId`), and `wardId` for authorization independence. Provides a transparent resolution timeline for citizens and officials.",
+          "params": [
+            {
+              "name": "issueId",
+              "description": "The unique identifier of the parent issue."
+            },
+            {
+              "name": "timelineEntryId",
+              "description": "The unique identifier for a specific timeline entry."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/issues_all/{issueId}/audit_logs/{logId}",
+        "definition": {
+          "entityName": "AuditLog",
+          "schema": {
+            "$ref": "#/backend/entities/AuditLog"
+          },
+          "description": "Subcollection for audit entries specifically related to actions performed on a particular issue. Documents are immutable, capturing who, what, and when for changes to the issue or its proofs. Read-only for relevant users and roles to ensure governance integrity.",
+          "params": [
+            {
+              "name": "issueId",
+              "description": "The unique identifier of the parent issue."
+            },
+            {
+              "name": "logId",
+              "description": "The unique identifier for a specific audit log entry."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/system_audit_logs/{logId}",
+        "definition": {
+          "entityName": "AuditLog",
+          "schema": {
+            "$ref": "#/backend/entities/AuditLog"
+          },
+          "description": "Records system-wide audit events not tied to a specific issue (e.g., user logins, role changes, general configuration updates, proof deletion attempts). Immutable, read-only for Admin, Collector, and Commissioner roles for comprehensive system oversight.",
+          "params": [
+            {
+              "name": "logId",
+              "description": "The unique identifier for a system-level audit log entry."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/user_profiles/{userId}/reported_issues/{issueId}",
+        "definition": {
+          "entityName": "Issue",
+          "schema": {
+            "$ref": "#/backend/entities/Issue"
+          },
+          "description": "A denormalized view of issues reported by a specific citizen. This structure enables path-based authorization, allowing citizens to easily list and manage their own reported issues efficiently (QAP-friendly). Only essential fields for citizen display and interaction are copied/referenced from `/issues_all`.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique Firebase Authentication UID of the citizen who reported the issue."
+            },
+            {
+              "name": "issueId",
+              "description": "The unique identifier for a specific civic issue, matching the ID in `/issues_all`."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/user_profiles/{userId}/assigned_issues/{issueId}",
+        "definition": {
+          "entityName": "Issue",
+          "schema": {
+            "$ref": "#/backend/entities/Issue"
+          },
+          "description": "A denormalized view of issues currently assigned to a specific official (Sanitation Worker, Ward Officer, etc.). This structure enables path-based authorization, allowing officials to easily list and manage their assigned tasks efficiently (QAP-friendly). Only essential fields for official workflow and display are copied/referenced from `/issues_all`.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique Firebase Authentication UID of the official to whom the issue is assigned."
+            },
+            {
+              "name": "issueId",
+              "description": "The unique identifier for a specific civic issue, matching the ID in `/issues_all`."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/wards/{wardId}/issues_for_ward_officers/{issueId}",
+        "definition": {
+          "entityName": "Issue",
+          "schema": {
+            "$ref": "#/backend/entities/Issue"
+          },
+          "description": "A denormalized view of issues within a specific ward, designed for Ward Officers to efficiently list and manage issues in their jurisdiction. This structure enables path-based authorization, ensuring QAP-friendly queries for ward-scoped access. Only essential fields are copied/referenced from `/issues_all` to optimize performance and reduce read costs.",
+          "params": [
+            {
+              "name": "wardId",
+              "description": "The unique identifier of the ward."
+            },
+            {
+              "name": "issueId",
+              "description": "The unique identifier for a specific civic issue, matching the ID in `/issues_all`."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore data structure for the Madurai Civic Intelligence & Response System (MCIRS) is designed around core principles of Authorization Independence, Structural Segregation for QAPs (Query-Agnostic Permissions), and DBAC (Database-Backed Access Control). \n\n**Authorization Independence:** This is achieved through two primary mechanisms:\n1.  **User Profile for Roles/Scope:** User roles and their respective scopes (e.g., `wardIds` for a Ward Officer, `zoneId` for a Zonal Officer) are stored in dedicated `user_profiles/{userId}` documents. Firestore Security Rules can efficiently `get()` the *requesting user's own* profile to determine their roles and permissions. This avoids hierarchical authorization dependencies where a document's access relies on reading data from *other* unrelated data documents (e.g., an issue's access depending on a separate `ward_officers` collection), which are prone to breaking atomic operations and hard to debug. \n2.  **Denormalization in Subcollections:** For subcollections like `proofs` and `timeline` (e.g., `/issues_all/{issueId}/proofs/{proofId}`), critical authorization context from the parent `Issue` (such as `issueOwnerId` - the `reportedByUserId`, `issueAssignedToId` - the `assignedToUserId`, and `wardId`) is denormalized directly into each sub-document. This allows security rules to evaluate access to `Proof` or `IssueTimelineEntry` documents by inspecting their own fields (`resource.data`) without needing to perform a `get()` call to the parent `Issue` document. This ensures atomic creation and updates and simplifies rules.\n\n**QAPs (Query-Agnostic Permissions) via Structural Segregation:** To enable robust and secure `list` operations without security rules acting as filters, a strategy of **Structural Segregation** is employed. Instead of a single `/issues` collection with complex `where` clauses and rule logic, issues are denormalized into specific, role-scoped collections:\n1.  **Global View (`/issues_all/{issueId}`):** This master collection provides a city-wide view of all issues, primarily accessible by higher authorities (Commissioner, Collector, Admin) who require broad, unfiltered data access. This satisfies their QAP needs directly.\n2.  **Path-Based Citizen View (`/user_profiles/{userId}/reported_issues/{issueId}`):** Citizens can only list issues under their specific `userId` path. The `userId` in the path naturally filters the data, and rules simply verify that `userId == request.auth.uid`. \n3.  **Path-Based Assigned Official View (`/user_profiles/{userId}/assigned_issues/{issueId}`):** Similarly, officials can only list issues assigned to them via their `userId` path, with rules verifying `userId == request.auth.uid`.\n4.  **Scoped Ward Officer View (`/wards/{wardId}/issues_for_ward_officers/{issueId}`):** Ward Officers need to see issues within their assigned wards. By creating a subcollection under each `wardId`, officers can query this specific path. Rules will then verify if the `request.auth.uid` is authorized for that `wardId` by checking their `user_profiles/{userId}` document's `wardIds` array. This provides QAP-friendly `list` operations by structuring the data to reflect access scope.\n\nThis multi-collection approach ensures that `list` queries are inherently constrained by the path or by direct `reportedByUserId`/`assignedToUserId` fields, and rules can validate these constraints directly, providing clear, debuggable, and performant authorization.\n\n**Note on missing entities:** The provided `backend.entities` JSON did not include a `User` or `Role` entity, which are crucial for implementing DBAC (Database-Backed Access Control) as mandated by the requirements. For the purpose of this design, it is assumed that `User` and `AdminRole` are conceptual entities that would be fully defined in a complete backend schema, allowing for `$ref` values like `#/backend/entities/User` and `#/backend/entities/AdminRole`. This assumption is necessary to fulfill the RBAC requirements."
+  }
+}
