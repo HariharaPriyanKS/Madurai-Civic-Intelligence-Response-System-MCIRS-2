@@ -11,10 +11,10 @@ export default function Home() {
   const heroImg = PlaceHolderImages.find(img => img.id === "hero-madurai");
 
   const stats = [
-    { label: "MCII Score", value: "84.2", icon: Trophy, color: "text-amber-500", trend: "+2.1%" },
-    { label: "Resolved Today", value: "142", icon: CheckCircle, color: "text-green-500", trend: "92%" },
-    { label: "Avg. SLA Response", value: "4.2h", icon: Clock, color: "text-blue-500", trend: "-15m" },
-    { label: "Active Reports", value: "891", icon: AlertTriangle, color: "text-red-500", trend: "High" },
+    { label: "MCII Score", value: "84.2", icon: Trophy, color: "text-amber-400", trend: "+2.1%" },
+    { label: "Resolved Today", value: "142", icon: CheckCircle, color: "text-green-400", trend: "92%" },
+    { label: "Avg. SLA Response", value: "4.2h", icon: Clock, color: "text-blue-400", trend: "-15m" },
+    { label: "Active Reports", value: "891", icon: AlertTriangle, color: "text-red-400", trend: "High" },
   ];
 
   return (
@@ -28,10 +28,11 @@ export default function Home() {
             src={heroImg?.imageUrl || ""} 
             alt="Madurai" 
             fill 
-            className="object-cover brightness-[0.3]"
+            className="object-cover"
             priority
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/20 to-background" />
+          {/* Enhanced Dark Overlay for better contrast */}
+          <div className="absolute inset-0 bg-gradient-to-b from-[#0a1428]/80 via-[#0a1428]/60 to-background" />
         </div>
 
         {/* Subtle Animated Glow */}
@@ -45,7 +46,7 @@ export default function Home() {
             <h1 className="text-5xl md:text-7xl font-headline font-bold mb-6 leading-tight text-white">
               Digitizing Madurai's <br/><span className="text-secondary">Governance</span>
             </h1>
-            <p className="text-xl text-white/80 mb-10 max-w-2xl mx-auto leading-relaxed">
+            <p className="text-xl text-white/90 mb-10 max-w-2xl mx-auto leading-relaxed">
               A unified operating system for Madurai's 100 wards. Report issues, track resolutions, and monitor city progress in real-time.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -58,20 +59,23 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Metric Cards - Vertically Centered Grid */}
+          {/* Metric Cards - Enhanced Glassmorphism for Visibility */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mt-8">
             {stats.map((stat, i) => (
-              <Card key={i} className="border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl hover:translate-y-[-4px] transition-all duration-300 group">
-                <CardContent className="p-6 flex items-center justify-between">
-                  <div>
-                    <p className="text-[10px] font-bold text-white/50 mb-1 uppercase tracking-widest">{stat.label}</p>
-                    <h3 className="text-3xl font-headline font-bold text-white">{stat.value}</h3>
-                    <Badge variant="outline" className="mt-2 text-[10px] bg-white/10 text-white/80 border-none group-hover:bg-primary/20 transition-colors">
+              <Card key={i} className="border-white/25 bg-white/15 backdrop-blur-[30px] shadow-[0_8px_32px_rgba(0,0,0,0.25)] hover:translate-y-[-4px] transition-all duration-300 group overflow-hidden">
+                <CardContent className="p-6 flex items-center justify-between relative">
+                   {/* Subtle Inner Glow */}
+                  <div className="absolute inset-0 bg-white/[0.02] pointer-events-none" />
+                  
+                  <div className="relative z-10">
+                    <p className="text-[10px] font-bold text-white/80 mb-1 uppercase tracking-widest">{stat.label}</p>
+                    <h3 className="text-3xl font-headline font-bold text-white mb-2">{stat.value}</h3>
+                    <Badge variant="outline" className="text-[10px] bg-white/10 text-white border-white/20 group-hover:bg-primary/40 transition-colors">
                       {stat.trend}
                     </Badge>
                   </div>
-                  <div className={`p-3 rounded-2xl bg-white/10 ${stat.color}`}>
-                    <stat.icon className="h-7 w-7" />
+                  <div className={`p-3 rounded-2xl bg-white/10 ${stat.color} shadow-inner`}>
+                    <stat.icon className="h-7 w-7 filter drop-shadow-[0_0_8px_currentColor]" />
                   </div>
                 </CardContent>
               </Card>
