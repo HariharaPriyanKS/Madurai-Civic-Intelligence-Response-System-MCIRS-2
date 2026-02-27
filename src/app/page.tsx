@@ -4,12 +4,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, CheckCircle, Clock, AlertTriangle, ArrowRight, ShieldCheck, MapPin, Building2 } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
-import { PlaceHolderImages } from "@/lib/placeholder-images";
 
 export default function Home() {
-  const heroImg = PlaceHolderImages.find(img => img.id === "hero-madurai");
-
   const stats = [
     { label: "MCII Score", value: "84.2", icon: Trophy, color: "text-amber-400", trend: "+2.1%" },
     { label: "Resolved Today", value: "142", icon: CheckCircle, color: "text-green-400", trend: "92%" },
@@ -17,44 +13,64 @@ export default function Home() {
     { label: "Active Reports", value: "891", icon: AlertTriangle, color: "text-red-400", trend: "High" },
   ];
 
+  // Generate some random particles for the animated background
+  const particles = Array.from({ length: 20 }).map((_, i) => ({
+    id: i,
+    top: `${Math.random() * 100}%`,
+    left: `${Math.random() * 100}%`,
+    delay: `${Math.random() * 10}s`,
+    duration: `${8 + Math.random() * 12}s`,
+    size: `${Math.random() * 4 + 2}px`,
+  }));
+
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
       
-      {/* Hero & Metrics Section */}
-      <section className="relative min-h-[90vh] flex flex-col justify-center py-24 overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <Image 
-            src={heroImg?.imageUrl || ""} 
-            alt="Madurai" 
-            fill 
-            className="object-cover"
-            priority
-            data-ai-hint={heroImg?.imageHint}
-          />
-          {/* Subtle gradient for depth and transition, removed the heavy dark overlay */}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-background" />
+      {/* Hero & Metrics Section with Premium Animated Background */}
+      <section className="relative min-h-[90vh] flex flex-col justify-center py-24 overflow-hidden bg-gradient-to-br from-[#0F172A] via-[#111827] to-[#0B1220] animate-gradient-shift">
+        
+        {/* Subtle Digital Grid Overlay */}
+        <div className="absolute inset-0 bg-grid-pattern opacity-40 pointer-events-none" />
+
+        {/* Animated Particles Layer */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          {particles.map((p) => (
+            <div
+              key={p.id}
+              className="absolute bg-secondary/20 rounded-full blur-[1px] animate-float-particle"
+              style={{
+                top: p.top,
+                left: p.left,
+                width: p.size,
+                height: p.size,
+                '--float-delay': p.delay,
+                '--float-duration': p.duration,
+              } as React.CSSProperties}
+            />
+          ))}
         </div>
 
         {/* Subtle Animated Glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/20 rounded-full blur-[120px] opacity-40 animate-pulse pointer-events-none z-10" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-primary/20 rounded-full blur-[160px] opacity-30 animate-pulse pointer-events-none z-10" />
 
         <div className="container mx-auto px-4 relative z-20">
           <div className="max-w-4xl mx-auto text-center mb-16">
-            <Badge className="mb-6 bg-secondary text-secondary-foreground border-none px-4 py-1 text-xs font-bold uppercase tracking-widest shadow-lg">
+            <Badge className="mb-6 bg-secondary/20 text-secondary border-secondary/30 px-4 py-1 text-xs font-bold uppercase tracking-widest shadow-lg backdrop-blur-sm">
               Smart City Mission Madurai
             </Badge>
-            <h1 className="text-5xl md:text-7xl font-headline font-bold mb-6 leading-tight text-white drop-shadow-2xl">
-              Digitizing Madurai's <br/><span className="text-secondary">Governance</span>
+            <h1 className="text-5xl md:text-7xl font-headline font-bold mb-6 leading-tight text-white [text-shadow:0_0_30px_rgba(0,255,200,0.2)]">
+              Digitizing Madurai's <br/>
+              <span className="text-secondary [text-shadow:0_0_20px_rgba(0,255,200,0.4)]">Governance</span>
             </h1>
-            <p className="text-xl text-white mb-10 max-w-2xl mx-auto leading-relaxed drop-shadow-lg">
+            <p className="text-xl text-white/80 mb-10 max-w-2xl mx-auto leading-relaxed drop-shadow-sm">
               A unified operating system for Madurai's 100 wards. Report issues, track resolutions, and monitor city progress in real-time.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button size="lg" className="bg-primary hover:bg-primary/90 text-white px-10 h-14 text-lg rounded-xl shadow-2xl shadow-primary/30" asChild>
                 <Link href="/report">Report Civic Issue</Link>
               </Button>
-              <Button size="lg" variant="outline" className="bg-white/10 backdrop-blur-md border-white/30 text-white hover:bg-white/20 h-14 text-lg rounded-xl shadow-lg" asChild>
+              <Button size="lg" variant="outline" className="bg-white/5 backdrop-blur-md border-white/10 text-white hover:bg-white/10 h-14 text-lg rounded-xl shadow-lg" asChild>
                 <Link href="/portal">Transparency Portal</Link>
               </Button>
             </div>
@@ -63,19 +79,19 @@ export default function Home() {
           {/* Metric Cards - Translucent Glassmorphism with High Visibility */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto mt-8">
             {stats.map((stat, i) => (
-              <Card key={i} className="border-white/30 bg-white/25 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.3)] hover:translate-y-[-4px] transition-all duration-300 group overflow-hidden border">
+              <Card key={i} className="border-white/20 bg-white/10 backdrop-blur-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] hover:translate-y-[-4px] transition-all duration-300 group overflow-hidden border">
                 <CardContent className="p-6 flex items-center justify-between relative">
                    {/* Inner Depth Glow */}
                   <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none" />
                   
                   <div className="relative z-10">
-                    <p className="text-[10px] font-bold text-white/90 mb-1 uppercase tracking-widest drop-shadow-sm">{stat.label}</p>
+                    <p className="text-[10px] font-bold text-white/70 mb-1 uppercase tracking-widest drop-shadow-sm">{stat.label}</p>
                     <h3 className="text-3xl font-headline font-bold text-white mb-2 drop-shadow-md">{stat.value}</h3>
-                    <Badge variant="outline" className="text-[10px] bg-white/20 text-white border-white/40 group-hover:bg-primary/50 transition-colors">
+                    <Badge variant="outline" className="text-[10px] bg-white/10 text-white/90 border-white/20 group-hover:bg-primary/50 transition-colors">
                       {stat.trend}
                     </Badge>
                   </div>
-                  <div className={`p-3 rounded-2xl bg-white/20 ${stat.color} shadow-inner backdrop-blur-md`}>
+                  <div className={`p-3 rounded-2xl bg-white/5 ${stat.color} shadow-inner backdrop-blur-md`}>
                     <stat.icon className="h-7 w-7 filter drop-shadow-[0_0_10px_currentColor]" />
                   </div>
                 </CardContent>
