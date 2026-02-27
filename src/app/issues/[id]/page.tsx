@@ -1,21 +1,24 @@
+
 "use client";
 
 import { useDoc, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { PriorityBadge } from "@/components/dashboard/PriorityBadge";
 import { calculateDisplayStatus } from "@/lib/issue-logic";
 import { calculateSeriousnessScore, getPriorityTag } from "@/lib/priority-logic";
-import { MapPin, Calendar, Clock, CheckCircle2, History, Image as ImageIcon, Loader2, AlertTriangle } from "lucide-react";
+import { MapPin, Calendar, Clock, CheckCircle2, History, Loader2, AlertTriangle, ArrowLeft } from "lucide-react";
 import Image from "next/image";
 import { collection, query, orderBy, doc } from "firebase/firestore";
 import { useState, useEffect } from "react";
 
 export default function IssueDetailPage() {
   const { id } = useParams();
+  const router = useRouter();
   const db = useFirestore();
   const [isMounted, setIsMounted] = useState(false);
 
@@ -42,8 +45,11 @@ export default function IssueDetailPage() {
 
   if (isIssueLoading || !issue) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-primary opacity-20 mx-auto mb-4" />
+          <p className="text-sm font-medium text-muted-foreground animate-pulse">Retrieving Governance Audit...</p>
+        </div>
       </div>
     );
   }
@@ -68,6 +74,10 @@ export default function IssueDetailPage() {
     <div className="min-h-screen bg-background pb-20">
       <Navbar />
       <div className="container mx-auto px-4 pt-32">
+        <Button variant="ghost" onClick={() => router.back()} className="mb-8 rounded-xl gap-2 hover:bg-primary/5 text-primary">
+          <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+        </Button>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Main Content */}
@@ -76,85 +86,93 @@ export default function IssueDetailPage() {
               <div className="flex flex-wrap items-center gap-4 mb-4">
                 <StatusBadge status={displayStatus} />
                 <PriorityBadge impact={getPriorityTag(score)} score={score} />
-                <Badge variant="outline">Ticket #{issue.id}</Badge>
+                <Badge variant="outline" className="rounded-lg border-2">Ticket #{issue.id}</Badge>
               </div>
-              <h1 className="text-4xl font-headline font-bold text-primary mb-2">{issue.title}</h1>
-              <div className="flex items-center gap-4 text-muted-foreground text-sm">
-                <span className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {issue.wardId}</span>
-                <span className="flex items-center gap-1"><Calendar className="h-4 w-4" /> Reported {new Date(issue.reportedAt).toLocaleDateString()}</span>
+              <h1 className="text-4xl md:text-5xl font-headline font-bold text-primary mb-2 tracking-tight">{issue.title}</h1>
+              <div className="flex flex-wrap items-center gap-6 text-muted-foreground text-sm font-medium">
+                <span className="flex items-center gap-2"><MapPin className="h-4 w-4 text-primary" /> {issue.wardId}</span>
+                <span className="flex items-center gap-2"><Calendar className="h-4 w-4 text-primary" /> Reported {new Date(issue.reportedAt).toLocaleDateString()}</span>
               </div>
             </header>
 
-            <Card className="border-none shadow-xl overflow-hidden">
-              <CardHeader className="bg-muted/30 border-b">
-                <CardTitle>Issue Evidence</CardTitle>
-                <CardDescription>Mandatory before & after proof comparison</CardDescription>
+            <Card className="border-none shadow-2xl overflow-hidden rounded-3xl">
+              <CardHeader className="bg-muted/30 border-b p-8">
+                <CardTitle className="text-2xl font-bold">Evidence Comparison</CardTitle>
+                <CardDescription>Mandatory visual proof required for accountability</CardDescription>
               </CardHeader>
-              <CardContent className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Before (Reported)</p>
-                    <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted">
+              <CardContent className="p-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">Before (Initial Report)</p>
+                    <div className="relative aspect-square rounded-3xl overflow-hidden bg-muted shadow-inner border">
                       <Image 
-                        src={issue.beforeImage || `https://picsum.photos/seed/${issue.id}-before/800/600`} 
+                        src={issue.beforeImage || `https://picsum.photos/seed/${issue.id}-before/800/800`} 
                         alt="Initial Report" 
                         fill 
                         className="object-cover"
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">After (Resolution Proof)</p>
-                    <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted border-2 border-dashed flex items-center justify-center">
+                  <div className="space-y-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">After (Resolution Proof)</p>
+                    <div className="relative aspect-square rounded-3xl overflow-hidden bg-muted border-2 border-dashed flex items-center justify-center">
                       {issue.status === 'ResolvedByOfficer' || issue.status === 'Closed' ? (
                         <Image 
-                          src={issue.afterImage || `https://picsum.photos/seed/${issue.id}-after/800/600`} 
+                          src={issue.afterImage || `https://picsum.photos/seed/${issue.id}-after/800/800`} 
                           alt="Resolution Proof" 
                           fill 
-                          className="object-cover"
+                          className="object-cover animate-in fade-in zoom-in duration-500"
                         />
                       ) : (
-                        <div className="text-center text-muted-foreground p-8">
-                          <ImageIcon className="h-10 w-10 mx-auto mb-2 opacity-20" />
-                          <p className="text-sm">Pending Resolution Proof</p>
+                        <div className="text-center text-muted-foreground p-8 opacity-40">
+                          <CheckCircle2 className="h-16 w-16 mx-auto mb-4" />
+                          <p className="font-bold text-lg">Resolution Pending</p>
+                          <p className="text-xs max-w-[160px] mx-auto mt-2">Officer must upload after-photo to complete the loop.</p>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
-                <div className="mt-8 p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                   <h4 className="font-bold mb-2">Description</h4>
-                   <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">{issue.description}</p>
+                <div className="mt-12 p-8 bg-primary/5 rounded-3xl border border-primary/10">
+                   <h4 className="font-bold text-lg mb-4 text-primary flex items-center gap-2">
+                     <Clock className="h-5 w-5" /> Detailed Description
+                   </h4>
+                   <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap text-lg italic">
+                    "{issue.description}"
+                   </p>
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="border-none shadow-xl">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <History className="h-5 w-5 text-primary" />
-                  Resolution Timeline
+            <Card className="border-none shadow-2xl rounded-3xl">
+              <CardHeader className="p-8 border-b bg-muted/20">
+                <CardTitle className="flex items-center gap-3 text-2xl font-bold">
+                  <History className="h-6 w-6 text-primary" />
+                  Governance Audit Timeline
                 </CardTitle>
-                <CardDescription>Chronological audit log of all actions taken on this ticket.</CardDescription>
+                <CardDescription>Chronological sequence of administrative actions.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-8 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-slate-300 before:to-transparent">
+              <CardContent className="p-8">
+                <div className="space-y-12 relative before:absolute before:inset-0 before:ml-6 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-1 before:bg-gradient-to-b before:from-transparent before:via-slate-200 before:to-transparent">
                   {timeline?.map((entry, i) => (
-                    <div key={entry.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full border border-white bg-slate-300 group-[.is-active]:bg-primary text-slate-500 group-[.is-active]:text-emerald-50 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                        <CheckCircle2 className="h-5 w-5" />
+                    <div key={entry.id} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active animate-in slide-in-from-bottom-4 duration-500" style={{ animationDelay: `${i * 100}ms` }}>
+                      <div className="flex items-center justify-center w-12 h-12 rounded-2xl border-4 border-white bg-slate-200 group-[.is-active]:bg-primary text-slate-500 group-[.is-active]:text-white shadow-xl shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 transition-transform hover:scale-110">
+                        <CheckCircle2 className="h-6 w-6" />
                       </div>
-                      <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-                        <div className="flex items-center justify-between space-x-2 mb-1">
-                          <div className="font-bold text-slate-900">{entry.eventType}</div>
-                          <time className="font-mono text-xs text-primary">{new Date(entry.timestamp).toLocaleTimeString()}</time>
+                      <div className="w-[calc(100%-4rem)] md:w-[calc(50%-3.5rem)] bg-white p-6 rounded-2xl border border-slate-100 shadow-lg hover:shadow-xl transition-shadow">
+                        <div className="flex items-center justify-between space-x-2 mb-2">
+                          <div className="font-black text-slate-900 uppercase tracking-tight">{entry.eventType}</div>
+                          <time className="font-mono text-xs text-primary bg-primary/10 px-2 py-1 rounded-md">{new Date(entry.timestamp).toLocaleTimeString()}</time>
                         </div>
-                        <div className="text-slate-500 text-sm">{entry.description}</div>
+                        <div className="text-slate-500 text-sm leading-relaxed">{entry.description}</div>
                       </div>
                     </div>
                   ))}
                   {timeline?.length === 0 && (
-                    <p className="text-center text-muted-foreground py-10">Initializing resolution history...</p>
+                    <div className="text-center py-20 text-muted-foreground opacity-40">
+                      <History className="h-12 w-12 mx-auto mb-4 animate-spin-slow" />
+                      <p className="font-bold">Initializing Resolution Log...</p>
+                    </div>
                   )}
                 </div>
               </CardContent>
@@ -163,44 +181,52 @@ export default function IssueDetailPage() {
 
           {/* Sidebar */}
           <div className="space-y-8">
-             <Card className="border-none shadow-xl bg-primary text-white">
-                <CardHeader>
-                  <CardTitle>Governance Integrity</CardTitle>
+             <Card className="border-none shadow-2xl bg-primary text-white rounded-3xl overflow-hidden relative group">
+                <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+                   <ShieldCheck className="h-24 w-24" />
+                </div>
+                <CardHeader className="p-8">
+                  <CardTitle className="text-2xl font-bold">Integrity Score</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between items-center text-sm">
-                    <span>SLA Deadline</span>
-                    <span className="font-mono">{new Date(issue.resolutionDeadline).toLocaleDateString()}</span>
+                <CardContent className="p-8 pt-0 space-y-6">
+                  <div className="flex justify-between items-center text-sm border-b border-white/10 pb-4">
+                    <span className="opacity-70 font-medium">SLA Deadline</span>
+                    <span className="font-mono font-bold">{new Date(issue.resolutionDeadline).toLocaleDateString()}</span>
+                  </div>
+                  <div className="flex justify-between items-end border-b border-white/10 pb-4">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest opacity-60">Support Ranking</p>
+                      <h3 className="text-5xl font-black mt-1">{issue.supportCount || 0}</h3>
+                    </div>
+                    <Badge className="bg-white/20 text-white border-none rounded-lg px-3 py-1 mb-1">
+                      City High
+                    </Badge>
                   </div>
                   <div className="flex justify-between items-center text-sm">
-                    <span>Support Count</span>
-                    <span className="font-bold text-2xl">{issue.supportCount || 0}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm">
-                    <span>Reopen Count</span>
-                    <span className="font-bold">{issue.reopenCount || 0}</span>
+                    <span className="opacity-70 font-medium">Reopen Frequency</span>
+                    <span className="font-bold text-xl">{issue.reopenCount || 0}</span>
                   </div>
                   {issue.reopenCount > 2 && (
-                    <div className="p-3 bg-red-500/20 border border-red-500/30 rounded-xl flex items-center gap-2">
-                       <AlertTriangle className="h-5 w-5" />
-                       <span className="text-[10px] font-bold uppercase">Governance Risk Flagged</span>
+                    <div className="p-4 bg-red-500/30 border border-white/20 rounded-2xl flex items-center gap-3 animate-pulse">
+                       <AlertTriangle className="h-6 w-6 text-white" />
+                       <span className="text-xs font-black uppercase tracking-tighter leading-none">High Governance <br/>Risk Flagged</span>
                     </div>
                   )}
                 </CardContent>
              </Card>
 
-             <Card className="border-none shadow-xl">
+             <Card className="border-none shadow-2xl rounded-3xl p-4">
                <CardHeader>
-                 <CardTitle>Assigned Official</CardTitle>
+                 <CardTitle className="text-xl font-bold">Officer Assigned</CardTitle>
                </CardHeader>
                <CardContent>
-                  <div className="flex items-center gap-4">
-                    <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                      <Clock className="h-6 w-6 text-muted-foreground" />
+                  <div className="flex items-center gap-4 p-4 bg-muted/50 rounded-2xl">
+                    <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center">
+                      <UserCircle className="h-8 w-8 text-primary" />
                     </div>
                     <div>
-                      <p className="font-bold">Ward Officer</p>
-                      <p className="text-xs text-muted-foreground">Madurai Corporation Zone 3</p>
+                      <p className="font-black text-slate-900 leading-none">Ward Executive</p>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mt-1">Zone 3 • Ward {issue.wardId}</p>
                     </div>
                   </div>
                </CardContent>
@@ -210,5 +236,25 @@ export default function IssueDetailPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function UserCircle(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
   );
 }

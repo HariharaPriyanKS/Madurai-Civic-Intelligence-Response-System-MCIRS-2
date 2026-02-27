@@ -1,7 +1,8 @@
+
 "use client";
 
 import Link from "next/link";
-import { Building2, UserCircle, Menu, Bell, LogOut, ChevronDown } from "lucide-react";
+import { Building2, UserCircle, Bell, LogOut, ChevronDown, PlusCircle, PieChart, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
@@ -14,13 +15,15 @@ import {
 import { useState, useEffect } from "react";
 import { useUser, useAuth } from "@/firebase";
 import { signOut } from "firebase/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const { user } = useUser();
   const auth = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
@@ -30,68 +33,142 @@ export function Navbar() {
 
   const handleSignOut = async () => {
     await signOut(auth);
-    router.push("/login");
+    router.push("/");
   };
 
+  const navLinks = [
+    { name: "Public Portal", href: "/portal", icon: PieChart },
+    { name: "Report Issue", href: "/report", icon: PlusCircle },
+    { name: "Governance", href: "/dashboard", icon: ShieldCheck },
+  ];
+
   return (
-    <nav className={`fixed top-0 w-full z-50 transition-all duration-200 ${scrolled ? "bg-white/90 backdrop-blur-md shadow-sm py-2" : "bg-transparent py-4"}`}>
+    <nav className={cn(
+      "fixed top-0 w-full z-50 transition-all duration-300",
+      scrolled ? "bg-white/95 backdrop-blur-md shadow-lg py-3" : "bg-transparent py-6"
+    )}>
       <div className="container mx-auto px-4 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2 group">
-          <div className="bg-primary p-2 rounded-lg group-hover:scale-110 transition-transform">
+        <Link href="/" className="flex items-center gap-3 group">
+          <div className="bg-primary p-2.5 rounded-xl group-hover:rotate-12 transition-all shadow-lg shadow-primary/20">
             <Building2 className="text-white h-6 w-6" />
           </div>
-          <div>
-            <h1 className="font-headline font-bold text-xl leading-none text-primary">MCIRS</h1>
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Madurai Governance</p>
+          <div className="hidden sm:block">
+            <h1 className={cn(
+              "font-headline font-black text-2xl leading-none tracking-tight",
+              scrolled ? "text-primary" : "text-white drop-shadow-md"
+            )}>MCIRS</h1>
+            <p className={cn(
+              "text-[9px] uppercase tracking-[0.2em] font-bold opacity-80",
+              scrolled ? "text-muted-foreground" : "text-white/80"
+            )}>Madurai Corporation</p>
           </div>
         </Link>
 
-        <div className="hidden md:flex items-center gap-8 font-medium text-sm">
-          <Link href="/portal" className="hover:text-primary transition-colors">Public Portal</Link>
-          <Link href="/report" className="hover:text-primary transition-colors">Report Issue</Link>
-          <Link href="/dashboard" className="hover:text-primary transition-colors">Dashboard</Link>
+        <div className="hidden md:flex items-center gap-1">
+          {navLinks.map((link) => (
+            <Button 
+              key={link.href} 
+              variant="ghost" 
+              asChild 
+              className={cn(
+                "rounded-xl h-10 px-4 gap-2 transition-all",
+                pathname === link.href ? "bg-primary/10 text-primary font-bold" : (scrolled ? "text-muted-foreground hover:bg-muted" : "text-white/90 hover:bg-white/10")
+              )}
+            >
+              <Link href={link.href}>
+                <link.icon className="h-4 w-4" />
+                {link.name}
+              </Link>
+            </Button>
+          ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="text-muted-foreground">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className={cn(
+            "rounded-xl transition-colors",
+            scrolled ? "text-muted-foreground hover:bg-muted" : "text-white/90 hover:bg-white/10"
+          )}>
             <Bell className="h-5 w-5" />
           </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" className="gap-2 px-2 hover:bg-muted/50 rounded-xl">
-                <UserCircle className="h-6 w-6" />
-                <span className="hidden sm:inline text-xs font-bold text-muted-foreground truncate max-w-[100px]">
-                  {user?.isAnonymous ? "Citizen" : user?.email?.split('@')[0] || "Guest"}
-                </span>
-                <ChevronDown className="h-3 w-3 text-muted-foreground" />
+              <Button 
+                variant={scrolled ? "outline" : "ghost"} 
+                className={cn(
+                  "gap-3 pl-2 pr-4 h-12 rounded-2xl transition-all border-white/20",
+                  scrolled ? "bg-white shadow-sm" : "text-white hover:bg-white/10"
+                )}
+              >
+                <div className="h-8 w-8 rounded-xl bg-primary/20 flex items-center justify-center">
+                  <UserCircle className={cn("h-6 w-6", scrolled ? "text-primary" : "text-white")} />
+                </div>
+                <div className="hidden lg:block text-left leading-none">
+                  <p className="text-xs font-bold uppercase tracking-tighter truncate max-w-[80px]">
+                    {user?.isAnonymous ? "Citizen" : user?.email?.split('@')[0] || "Guest"}
+                  </p>
+                  <p className="text-[9px] opacity-60">Identity Verified</p>
+                </div>
+                <ChevronDown className="h-3 w-3 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 rounded-xl p-2 shadow-2xl border-none">
-              <DropdownMenuLabel className="text-xs font-bold text-muted-foreground uppercase">Identity Profile</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem asChild className="rounded-lg">
-                <Link href="/dashboard">My Dashboard</Link>
+            <DropdownMenuContent align="end" className="w-64 rounded-2xl p-2 shadow-2xl border-none mt-2">
+              <DropdownMenuLabel className="px-3 py-2">
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">User Profile</p>
+                <p className="text-sm font-semibold truncate mt-1">{user?.email || "Authenticated Citizen"}</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="my-2" />
+              <DropdownMenuItem asChild className="rounded-xl h-11 px-3 cursor-pointer">
+                <Link href="/dashboard" className="flex items-center gap-3">
+                  <ShieldCheck className="h-4 w-4 text-primary" />
+                  My Dashboard
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild className="rounded-lg">
-                <Link href="/report">Submit Grivence</Link>
+              <DropdownMenuItem asChild className="rounded-xl h-11 px-3 cursor-pointer">
+                <Link href="/report" className="flex items-center gap-3">
+                  <PlusCircle className="h-4 w-4 text-primary" />
+                  Submit Grievance
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="my-2" />
               {user && !user.isAnonymous ? (
-                <DropdownMenuItem onClick={handleSignOut} className="text-destructive rounded-lg gap-2 cursor-pointer">
-                  <LogOut className="h-4 w-4" /> Sign Out
+                <DropdownMenuItem onClick={handleSignOut} className="text-destructive focus:bg-destructive/5 rounded-xl h-11 px-3 gap-3 cursor-pointer">
+                  <LogOut className="h-4 w-4" /> Sign Out from MCIRS
                 </DropdownMenuItem>
               ) : (
-                <DropdownMenuItem asChild className="rounded-lg">
-                  <Link href="/login">Officer Login</Link>
+                <DropdownMenuItem asChild className="rounded-xl h-11 px-3 cursor-pointer">
+                  <Link href="/login" className="flex items-center gap-3">
+                    <LogIn className="h-4 w-4 text-primary" />
+                    Officer Login
+                  </Link>
                 </DropdownMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" size="icon" className="md:hidden">
-            <Menu className="h-6 w-6" />
-          </Button>
         </div>
       </div>
     </nav>
+  );
+}
+
+// Helper to prevent TS errors on LogIn icon
+function LogIn(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+      <polyline points="10 17 15 12 10 7" />
+      <line x1="15" y1="12" x2="3" y2="12" />
+    </svg>
   );
 }
