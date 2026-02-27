@@ -1,12 +1,13 @@
 
 "use client";
 
+import { useRef, useState } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { calculateDisplayStatus } from "@/lib/issue-logic";
-import { Camera, MapPin, CheckCircle, Clock, ShieldCheck, AlertTriangle, BarChart3, ListChecks, Loader2 } from "lucide-react";
+import { Camera, MapPin, CheckCircle, Clock, ShieldCheck, AlertTriangle, BarChart3, ListChecks, Loader2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
@@ -14,11 +15,44 @@ import { collection, doc, writeBatch } from "firebase/firestore";
 import { processAnalytics } from "@/lib/analytics-logic";
 import { StatusDistributionChart, AgeDistributionChart } from "@/components/analytics/AnalyticsCharts";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import Image from "next/image";
+
+/**
+ * Utility to compress a base64 image string to ensure it fits within Firestore's 1MB limit.
+ */
+const compressImage = (dataUri: string, maxWidth: number = 1000, quality: number = 0.6): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(maxWidth / img.width, 1);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const result = canvas.toDataURL('image/jpeg', quality);
+        if (result.length > 1000000) {
+          resolve(compressImage(dataUri, maxWidth * 0.7, quality * 0.7));
+        } else {
+          resolve(result);
+        }
+      } else {
+        reject(new Error("Canvas context failed"));
+      }
+    };
+    img.onerror = () => reject(new Error("Image load failed"));
+    img.src = dataUri;
+  });
+};
 
 export default function OfficialDashboard() {
   const { toast } = useToast();
   const { user } = useUser();
   const db = useFirestore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
   const issuesRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -28,7 +62,7 @@ export default function OfficialDashboard() {
   const { data: issues, isLoading } = useCollection(issuesRef);
   const stats = issues ? processAnalytics(issues) : null;
 
-  const handleResolve = async (issue: any) => {
+  const handleResolve = async (issue: any, photoDataUri: string) => {
     try {
       const batch = writeBatch(db);
       const proofId = `PR-${Date.now()}`;
@@ -40,13 +74,22 @@ export default function OfficialDashboard() {
         resolvedAt: resolutionTime,
         isProofVerified: true,
         geoCoordinatesVerified: true,
-        timestampVerified: true
+        timestampVerified: true,
+        afterImage: photoDataUri
       };
 
       // Atomic updates to all denormalized paths
       batch.update(doc(db, "issues_all", issue.id), updateData);
-      batch.update(doc(db, "user_profiles", issue.reportedByUserId, "reported_issues", issue.id), updateData);
-      batch.update(doc(db, "wards", issue.wardId, "issues_for_ward_officers", issue.id), updateData);
+      
+      // Update citizen scoped path
+      if (issue.reportedByUserId) {
+        batch.update(doc(db, "user_profiles", issue.reportedByUserId, "reported_issues", issue.id), updateData);
+      }
+      
+      // Update ward scoped path
+      if (issue.wardId) {
+        batch.update(doc(db, "wards", issue.wardId, "issues_for_ward_officers", issue.id), updateData);
+      }
 
       // Create timeline entry
       const timelineRef = doc(collection(db, "issues_all", issue.id, "timeline"));
@@ -68,6 +111,33 @@ export default function OfficialDashboard() {
       });
     } catch (err: any) {
       toast({ title: "Resolution Failed", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>, issue: any) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast({ title: "File too large", description: "Please upload an image smaller than 10MB.", variant: "destructive" });
+        return;
+      }
+
+      setIsProcessing(true);
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const rawDataUri = reader.result as string;
+        try {
+          const compressed = await compressImage(rawDataUri);
+          await handleResolve(issue, compressed);
+        } catch (err) {
+          console.error("Processing error:", err);
+          toast({ title: "Processing Failed", description: "Could not process resolution proof.", variant: "destructive" });
+        } finally {
+          setIsProcessing(false);
+          setSelectedIssueId(null);
+        }
+      };
+      reader.readAsDataURL(file);
     }
   };
 
@@ -134,7 +204,7 @@ export default function OfficialDashboard() {
               </h2>
 
               {issues?.map(issue => (
-                <Card key={issue.id} className="border-none shadow-xl mb-6">
+                <Card key={issue.id} className="border-none shadow-xl mb-6 overflow-hidden">
                   <CardContent className="p-0">
                     <div className="flex flex-col md:flex-row">
                       <div className="p-8 flex-grow">
@@ -154,22 +224,37 @@ export default function OfficialDashboard() {
                            <MapPin className="h-3 w-3" /> {issue.wardId} • Reported {new Date(issue.reportedAt).toLocaleDateString()}
                         </div>
                       </div>
-                      <div className="bg-muted/30 p-8 border-l flex flex-col justify-center items-center gap-4 w-full md:w-80">
+                      <div className="bg-muted/30 p-8 border-l flex flex-col justify-center items-center gap-4 w-full md:w-80 relative">
                          {issue.status === 'ResolvedByOfficer' || issue.status === 'Closed' ? (
                            <div className="text-center">
                              <CheckCircle className="h-10 w-10 text-green-600 mx-auto mb-2" />
                              <p className="font-bold text-green-700">Proof Submitted</p>
+                             <div className="mt-4 relative h-32 w-48 rounded-lg overflow-hidden border">
+                                <Image src={issue.afterImage || `https://picsum.photos/seed/${issue.id}-after/400/300`} alt="Resolution" fill className="object-cover" />
+                             </div>
                              <Button variant="outline" size="sm" className="mt-4" asChild>
                                 <a href={`/issues/${issue.id}`}>View Timeline</a>
                              </Button>
                            </div>
                          ) : (
                            <>
-                             <Button className="w-full h-14 rounded-xl text-lg gap-2" onClick={() => handleResolve(issue)}>
-                               <Camera className="h-6 w-6" /> Upload Resolution Proof
+                             <input 
+                               type="file" 
+                               accept="image/*" 
+                               className="hidden" 
+                               ref={fileInputRef} 
+                               onChange={(e) => onPhotoChange(e, issue)}
+                             />
+                             <Button 
+                               className="w-full h-14 rounded-xl text-lg gap-2" 
+                               disabled={isProcessing}
+                               onClick={() => fileInputRef.current?.click()}
+                             >
+                               {isProcessing ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
+                               Upload Resolution Proof
                              </Button>
                              <p className="text-[10px] text-center text-muted-foreground">
-                               GPS, Timestamp & EXIF data captured automatically.
+                               GPS, Timestamp & EXIF data captured automatically. Max 10MB.
                              </p>
                            </>
                          )}

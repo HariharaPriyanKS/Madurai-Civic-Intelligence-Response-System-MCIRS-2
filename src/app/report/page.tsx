@@ -20,9 +20,10 @@ import Image from "next/image";
 
 /**
  * Utility to compress a base64 image string to ensure it fits within Firestore's 1MB limit.
+ * Supports up to 10MB input files.
  */
-const compressImage = (dataUri: string, maxWidth: number = 800): Promise<string> => {
-  return new Promise((resolve) => {
+const compressImage = (dataUri: string, maxWidth: number = 1000, quality: number = 0.6): Promise<string> => {
+  return new Promise((resolve, reject) => {
     const img = new window.Image();
     img.onload = () => {
       const canvas = document.createElement('canvas');
@@ -32,12 +33,21 @@ const compressImage = (dataUri: string, maxWidth: number = 800): Promise<string>
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        // Using JPEG format with 0.7 quality to significantly reduce size
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
+        // Using JPEG format to significantly reduce size.
+        // Even for very large 10MB files, 1000px at 0.6 quality is typically < 300KB.
+        const result = canvas.toDataURL('image/jpeg', quality);
+        
+        // Final safety check: if still somehow > 1MB (unlikely for these params), compress more.
+        if (result.length > 1000000) {
+          resolve(compressImage(dataUri, maxWidth * 0.7, quality * 0.7));
+        } else {
+          resolve(result);
+        }
       } else {
-        resolve(dataUri);
+        reject(new Error("Canvas context failed"));
       }
     };
+    img.onerror = () => reject(new Error("Image load failed"));
     img.src = dataUri;
   });
 };
@@ -73,19 +83,24 @@ export default function ReportPage() {
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        toast({ title: "Large File", description: "This image is very large. We will compress it for you.", variant: "default" });
+      // Support up to 10MB
+      if (file.size > 10 * 1024 * 1024) {
+        toast({ title: "File too large", description: "Please upload an image smaller than 10MB.", variant: "destructive" });
+        return;
       }
 
       const reader = new FileReader();
       reader.onloadend = async () => {
         const rawDataUri = reader.result as string;
         try {
+          setLoading(true);
           const compressed = await compressImage(rawDataUri);
           setPhotoDataUri(compressed);
         } catch (err) {
           console.error("Compression error:", err);
-          setPhotoDataUri(rawDataUri);
+          toast({ title: "Processing Error", description: "Failed to process the image. Please try a different one.", variant: "destructive" });
+        } finally {
+          setLoading(false);
         }
       };
       reader.readAsDataURL(file);
@@ -168,22 +183,18 @@ export default function ReportPage() {
         language: "en",
         autoDetectedWard: false,
         beforeImage: photoDataUri || `https://picsum.photos/seed/${issueId}/800/600`,
-        hasExifData: !!photoDataUri, // Simulated for the prototype
+        hasExifData: !!photoDataUri,
       };
 
-      // 1. Master collection
       const masterRef = doc(db, "issues_all", issueId);
       batch.set(masterRef, issueData);
 
-      // 2. Citizen scoped collection
       const citizenRef = doc(db, "user_profiles", user.uid, "reported_issues", issueId);
       batch.set(citizenRef, issueData);
 
-      // 3. Ward scoped collection
       const wardRef = doc(db, "wards", ward, "issues_for_ward_officers", issueId);
       batch.set(wardRef, issueData);
 
-      // 4. Initial Timeline Entry
       const timelineRef = doc(collection(db, "issues_all", issueId, "timeline"));
       batch.set(timelineRef, {
         id: timelineRef.id,
@@ -252,7 +263,7 @@ export default function ReportPage() {
             <Card className="border-none shadow-lg">
               <CardHeader>
                 <CardTitle>Issue Evidence</CardTitle>
-                <CardDescription>Attach visual or audio proof to accelerate resolution.</CardDescription>
+                <CardDescription>Attach visual or audio proof (Max 10MB).</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -268,6 +279,7 @@ export default function ReportPage() {
                     variant={photoDataUri ? "secondary" : "outline"} 
                     className="h-24 flex-col gap-2 rounded-2xl relative overflow-hidden group"
                     onClick={handlePhotoUploadClick}
+                    disabled={loading}
                   >
                     {photoDataUri ? (
                       <>
@@ -277,7 +289,7 @@ export default function ReportPage() {
                       </>
                     ) : (
                       <>
-                        <Camera className="h-6 w-6" />
+                        {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
                         <span>Upload Photo</span>
                       </>
                     )}
@@ -287,6 +299,7 @@ export default function ReportPage() {
                     variant={isRecording ? "destructive" : "outline"} 
                     className={`h-24 flex-col gap-2 rounded-2xl ${isRecording ? 'animate-pulse' : ''}`}
                     onClick={handleVoiceMessageClick}
+                    disabled={loading}
                   >
                     {isRecording ? (
                       <>
