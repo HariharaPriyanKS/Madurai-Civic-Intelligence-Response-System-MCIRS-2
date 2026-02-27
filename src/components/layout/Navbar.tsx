@@ -1,24 +1,37 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, UserCircle, Menu, Bell } from "lucide-react";
+import { Building2, UserCircle, Menu, Bell, LogOut, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
   DropdownMenuItem, 
-  DropdownMenuTrigger 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel
 } from "@/components/ui/dropdown-menu";
 import { useState, useEffect } from "react";
+import { useUser, useAuth } from "@/firebase";
+import { signOut } from "firebase/auth";
+import { useRouter } from "next/navigation";
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
+  const { user } = useUser();
+  const auth = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  const handleSignOut = async () => {
+    await signOut(auth);
+    router.push("/login");
+  };
 
   return (
     <nav className={`fixed top-0 w-full z-50 transition-all duration-200 ${scrolled ? "bg-white/90 backdrop-blur-md shadow-sm py-2" : "bg-transparent py-4"}`}>
@@ -45,14 +58,33 @@ export function Navbar() {
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
+              <Button variant="ghost" className="gap-2 px-2 hover:bg-muted/50 rounded-xl">
                 <UserCircle className="h-6 w-6" />
+                <span className="hidden sm:inline text-xs font-bold text-muted-foreground truncate max-w-[100px]">
+                  {user?.isAnonymous ? "Citizen" : user?.email?.split('@')[0] || "Guest"}
+                </span>
+                <ChevronDown className="h-3 w-3 text-muted-foreground" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild><Link href="/login">Login</Link></DropdownMenuItem>
-              <DropdownMenuItem asChild><Link href="/dashboard/citizen">Citizen Profile</Link></DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive">Logout</DropdownMenuItem>
+            <DropdownMenuContent align="end" className="w-56 rounded-xl p-2 shadow-2xl border-none">
+              <DropdownMenuLabel className="text-xs font-bold text-muted-foreground uppercase">Identity Profile</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild className="rounded-lg">
+                <Link href="/dashboard">My Dashboard</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild className="rounded-lg">
+                <Link href="/report">Submit Grivence</Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              {user && !user.isAnonymous ? (
+                <DropdownMenuItem onClick={handleSignOut} className="text-destructive rounded-lg gap-2 cursor-pointer">
+                  <LogOut className="h-4 w-4" /> Sign Out
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem asChild className="rounded-lg">
+                  <Link href="/login">Officer Login</Link>
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
           <Button variant="ghost" size="icon" className="md:hidden">

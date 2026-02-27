@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,6 @@ import { FirestorePermissionError } from "@/firebase/errors";
 import { collection, doc, writeBatch } from "firebase/firestore";
 import { processAnalytics } from "@/lib/analytics-logic";
 import { StatusDistributionChart, AgeDistributionChart } from "@/components/analytics/AnalyticsCharts";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import Image from "next/image";
 
 const compressImage = (dataUri: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
@@ -49,6 +48,11 @@ export default function OfficialDashboard() {
   const db = useFirestore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const issuesRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -59,6 +63,9 @@ export default function OfficialDashboard() {
   const stats = issues ? processAnalytics(issues) : null;
 
   const handleResolve = (issue: any, photoDataUri: string) => {
+    if (!user) return;
+    setIsProcessing(true);
+    
     const batch = writeBatch(db);
     const proofId = `PR-${Date.now()}`;
     const resolutionTime = new Date().toISOString();
@@ -73,7 +80,8 @@ export default function OfficialDashboard() {
       afterImage: photoDataUri
     };
 
-    batch.update(doc(db, "issues_all", issue.id), updateData);
+    const masterRef = doc(db, "issues_all", issue.id);
+    batch.update(masterRef, updateData);
     
     if (issue.reportedByUserId) {
       batch.update(doc(db, "user_profiles", issue.reportedByUserId, "reported_issues", issue.id), updateData);
@@ -83,6 +91,10 @@ export default function OfficialDashboard() {
       batch.update(doc(db, "wards", issue.wardId, "issues_for_ward_officers", issue.id), updateData);
     }
 
+    if (issue.assignedToUserId) {
+      batch.update(doc(db, "user_profiles", issue.assignedToUserId, "assigned_issues", issue.id), updateData);
+    }
+
     const timelineRef = doc(collection(db, "issues_all", issue.id, "timeline"));
     batch.set(timelineRef, {
       id: timelineRef.id,
@@ -90,23 +102,24 @@ export default function OfficialDashboard() {
       timestamp: resolutionTime,
       eventType: "ResolvedByOfficer",
       description: "Official uploaded resolution proof.",
-      actorUserId: user?.uid,
+      actorUserId: user.uid,
       relatedProofId: proofId
     });
 
-    batch.commit().then(() => {
-      toast({
-        title: "Proof Uploaded",
-        description: "Task resolved.",
+    batch.commit()
+      .then(() => {
+        toast({ title: "Proof Uploaded", description: "Task resolved." });
+        setIsProcessing(false);
+      })
+      .catch(async (serverError) => {
+        const permissionError = new FirestorePermissionError({
+          path: masterRef.path,
+          operation: 'update',
+          requestResourceData: updateData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        setIsProcessing(false);
       });
-    }).catch(async (serverError) => {
-      const permissionError = new FirestorePermissionError({
-        path: `/issues_all/${issue.id}`,
-        operation: 'update',
-        requestResourceData: updateData,
-      });
-      errorEmitter.emit('permission-error', permissionError);
-    });
   };
 
   const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>, issue: any) => {
@@ -134,11 +147,13 @@ export default function OfficialDashboard() {
     }
   };
 
+  if (!isMounted) return null;
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
       <div className="container mx-auto px-4 pt-32 pb-12">
-        <header className="mb-10 flex justify-between items-center">
+        <header className="mb-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-4xl font-headline font-bold text-primary">Officer Workspace</h1>
             <p className="text-muted-foreground">Evidence-based accountability Engine.</p>
@@ -192,63 +207,69 @@ export default function OfficialDashboard() {
                 </Card>
               </div>
 
-              {issues?.map(issue => (
-                <Card key={issue.id} className="border-none shadow-xl mb-6 overflow-hidden">
-                  <CardContent className="p-0">
-                    <div className="flex flex-col md:flex-row">
-                      <div className="p-8 flex-grow">
-                        <div className="flex items-center gap-4 mb-4">
-                          <StatusBadge status={calculateDisplayStatus({
-                            internalStatus: issue.status,
-                            isSlaBreached: issue.isSlaBreached,
-                            reopenCount: issue.reopenCount || 0,
-                            hasProof: !!issue.resolutionProofId,
-                            isProofVerified: issue.isProofVerified || false
-                          })} />
-                          <span className="text-sm font-bold text-muted-foreground">Ticket #{issue.id}</span>
+              {issues?.length === 0 ? (
+                <div className="text-center py-20 bg-muted/20 rounded-2xl border-2 border-dashed">
+                  <p className="text-muted-foreground">No active tasks assigned to your jurisdiction.</p>
+                </div>
+              ) : (
+                issues?.map(issue => (
+                  <Card key={issue.id} className="border-none shadow-xl mb-6 overflow-hidden">
+                    <CardContent className="p-0">
+                      <div className="flex flex-col md:flex-row">
+                        <div className="p-8 flex-grow">
+                          <div className="flex items-center gap-4 mb-4">
+                            <StatusBadge status={calculateDisplayStatus({
+                              internalStatus: issue.status,
+                              isSlaBreached: issue.isSlaBreached,
+                              reopenCount: issue.reopenCount || 0,
+                              hasProof: !!issue.resolutionProofId,
+                              isProofVerified: issue.isProofVerified || false
+                            })} />
+                            <span className="text-sm font-bold text-muted-foreground">Ticket #{issue.id}</span>
+                          </div>
+                          <h3 className="text-2xl font-bold mb-2">{issue.title}</h3>
+                          <p className="text-muted-foreground mb-6">{issue.description}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                             <MapPin className="h-3 w-3" /> {issue.wardId} • Reported {new Date(issue.reportedAt).toLocaleDateString()}
+                          </div>
                         </div>
-                        <h3 className="text-2xl font-bold mb-2">{issue.title}</h3>
-                        <p className="text-muted-foreground mb-6">{issue.description}</p>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                           <MapPin className="h-3 w-3" /> {issue.wardId} • Reported {new Date(issue.reportedAt).toLocaleDateString()}
-                        </div>
-                      </div>
-                      <div className="bg-muted/30 p-8 border-l flex flex-col justify-center items-center gap-4 w-full md:w-80 relative">
-                         {issue.status === 'ResolvedByOfficer' || issue.status === 'Closed' ? (
-                           <div className="text-center">
-                             <CheckCircle className="h-10 w-10 text-green-600 mx-auto mb-2" />
-                             <p className="font-bold text-green-700">Resolved</p>
-                             <div className="mt-4 relative h-32 w-48 rounded-lg overflow-hidden border">
-                                <Image src={issue.afterImage || `https://picsum.photos/seed/${issue.id}-after/400/300`} alt="Resolution" fill className="object-cover" />
+                        <div className="bg-muted/30 p-8 border-l flex flex-col justify-center items-center gap-4 w-full md:w-80 relative">
+                           {issue.status === 'ResolvedByOfficer' || issue.status === 'Closed' ? (
+                             <div className="text-center">
+                               <CheckCircle className="h-10 w-10 text-green-600 mx-auto mb-2" />
+                               <p className="font-bold text-green-700">Resolved</p>
+                               <div className="mt-4 relative h-32 w-48 rounded-lg overflow-hidden border">
+                                  <Image src={issue.afterImage || `https://picsum.photos/seed/${issue.id}-after/400/300`} alt="Resolution" fill className="object-cover" />
+                               </div>
                              </div>
-                           </div>
-                         ) : (
-                           <>
-                             <input 
-                               type="file" 
-                               accept="image/*" 
-                               className="hidden" 
-                               ref={fileInputRef} 
-                               onChange={(e) => onPhotoChange(e, issue)}
-                             />
-                             <Button 
-                               className="w-full h-14 rounded-xl text-lg gap-2" 
-                               disabled={isProcessing}
-                               onClick={() => fileInputRef.current?.click()}
-                             >
-                               {isProcessing ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
-                               Capture Proof
-                             </Button>
-                             <p className="text-[10px] text-center text-muted-foreground">
-                               Evidence Capture Loop Active.
-                             </p>
-                           </>
-                         )}
+                           ) : (
+                             <>
+                               <input 
+                                 type="file" 
+                                 accept="image/*" 
+                                 className="hidden" 
+                                 ref={fileInputRef} 
+                                 onChange={(e) => onPhotoChange(e, issue)}
+                               />
+                               <Button 
+                                 className="w-full h-14 rounded-xl text-lg gap-2" 
+                                 disabled={isProcessing}
+                                 onClick={() => fileInputRef.current?.click()}
+                               >
+                                 {isProcessing ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
+                                 Capture Proof
+                               </Button>
+                               <p className="text-[10px] text-center text-muted-foreground">
+                                 Evidence Capture Loop Active.
+                               </p>
+                             </>
+                           )}
+                        </div>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
             </TabsContent>
 
             <TabsContent value="analytics">

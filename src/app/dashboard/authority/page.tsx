@@ -14,13 +14,18 @@ import { NegligenceAlerts } from "@/components/analytics/NegligenceAlerts";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Download, TrendingUp, AlertTriangle, Loader2, FilterX } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { CATEGORIES } from "@/lib/constants";
 
 export default function AuthorityDashboard() {
   const { user } = useUser();
   const db = useFirestore();
   const [filters, setFilters] = useState<AnalyticsFilters>({});
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
   
   const issuesRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -51,6 +56,8 @@ export default function AuthorityDashboard() {
   }, [issues]);
 
   const resetFilters = () => setFilters({});
+
+  if (!isMounted) return null;
 
   return (
     <div className="min-h-screen bg-background pb-20">
@@ -137,35 +144,37 @@ export default function AuthorityDashboard() {
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead>Ticket</TableHead>
-                        <TableHead>Ward</TableHead>
-                        <TableHead>Priority</TableHead>
-                        <TableHead>Support</TableHead>
-                        <TableHead className="text-right">Score</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {topCriticalIssues.map((issue) => (
-                        <TableRow key={issue.id}>
-                          <TableCell className="font-bold text-xs uppercase">{issue.id}</TableCell>
-                          <TableCell className="text-xs">{issue.wardId}</TableCell>
-                          <TableCell>
-                            <PriorityBadge 
-                              impact={getPriorityTag(issue.seriousnessScore)} 
-                              score={issue.seriousnessScore} 
-                            />
-                          </TableCell>
-                          <TableCell className="font-bold">{issue.supportCount || 0}</TableCell>
-                          <TableCell className="text-right font-mono font-bold text-primary">
-                            {issue.seriousnessScore}
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead>Ticket</TableHead>
+                          <TableHead>Ward</TableHead>
+                          <TableHead>Priority</TableHead>
+                          <TableHead>Support</TableHead>
+                          <TableHead className="text-right">Score</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {topCriticalIssues.map((issue) => (
+                          <TableRow key={issue.id}>
+                            <TableCell className="font-bold text-xs uppercase">{issue.id}</TableCell>
+                            <TableCell className="text-xs">{issue.wardId}</TableCell>
+                            <TableCell>
+                              <PriorityBadge 
+                                impact={getPriorityTag(issue.seriousnessScore)} 
+                                score={issue.seriousnessScore} 
+                              />
+                            </TableCell>
+                            <TableCell className="font-bold">{issue.supportCount || 0}</TableCell>
+                            <TableCell className="text-right font-mono font-bold text-primary">
+                              {issue.seriousnessScore}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
 

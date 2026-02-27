@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useDoc, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
@@ -12,11 +11,17 @@ import { calculateDisplayStatus } from "@/lib/issue-logic";
 import { calculateSeriousnessScore, getPriorityTag } from "@/lib/priority-logic";
 import { MapPin, Calendar, Clock, CheckCircle2, History, Image as ImageIcon, Loader2, AlertTriangle } from "lucide-react";
 import Image from "next/image";
-import { collection, query, orderBy } from "firebase/firestore";
+import { collection, query, orderBy, doc } from "firebase/firestore";
+import { useState, useEffect } from "react";
 
 export default function IssueDetailPage() {
   const { id } = useParams();
   const db = useFirestore();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const issueRef = useMemoFirebase(() => doc(db, "issues_all", id as string), [db, id]);
   const { data: issue, isLoading: isIssueLoading } = useDoc(issueRef);
@@ -32,6 +37,8 @@ export default function IssueDetailPage() {
   }, [timelineRef]);
 
   const { data: timeline, isLoading: isTimelineLoading } = useCollection(timelineQuery);
+
+  if (!isMounted) return null;
 
   if (isIssueLoading || !issue) {
     return (
@@ -66,7 +73,7 @@ export default function IssueDetailPage() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-8">
             <header>
-              <div className="flex items-center gap-4 mb-4">
+              <div className="flex flex-wrap items-center gap-4 mb-4">
                 <StatusBadge status={displayStatus} />
                 <PriorityBadge impact={getPriorityTag(score)} score={score} />
                 <Badge variant="outline">Ticket #{issue.id}</Badge>
@@ -89,7 +96,7 @@ export default function IssueDetailPage() {
                     <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Before (Reported)</p>
                     <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted">
                       <Image 
-                        src={issue.beforeImage || "https://picsum.photos/seed/before/800/600"} 
+                        src={issue.beforeImage || `https://picsum.photos/seed/${issue.id}-before/800/600`} 
                         alt="Initial Report" 
                         fill 
                         className="object-cover"
@@ -101,7 +108,7 @@ export default function IssueDetailPage() {
                     <div className="relative aspect-video rounded-2xl overflow-hidden bg-muted border-2 border-dashed flex items-center justify-center">
                       {issue.status === 'ResolvedByOfficer' || issue.status === 'Closed' ? (
                         <Image 
-                          src={`https://picsum.photos/seed/${issue.id}-after/800/600`} 
+                          src={issue.afterImage || `https://picsum.photos/seed/${issue.id}-after/800/600`} 
                           alt="Resolution Proof" 
                           fill 
                           className="object-cover"
@@ -117,7 +124,7 @@ export default function IssueDetailPage() {
                 </div>
                 <div className="mt-8 p-4 bg-primary/5 rounded-2xl border border-primary/10">
                    <h4 className="font-bold mb-2">Description</h4>
-                   <p className="text-muted-foreground leading-relaxed">{issue.description}</p>
+                   <p className="text-muted-foreground leading-relaxed whitespace-pre-wrap">{issue.description}</p>
                 </div>
               </CardContent>
             </Card>
@@ -146,6 +153,9 @@ export default function IssueDetailPage() {
                       </div>
                     </div>
                   ))}
+                  {timeline?.length === 0 && (
+                    <p className="text-center text-muted-foreground py-10">Initializing resolution history...</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -189,7 +199,7 @@ export default function IssueDetailPage() {
                       <Clock className="h-6 w-6 text-muted-foreground" />
                     </div>
                     <div>
-                      <p className="font-bold">Sanitation Officer</p>
+                      <p className="font-bold">Ward Officer</p>
                       <p className="text-xs text-muted-foreground">Madurai Corporation Zone 3</p>
                     </div>
                   </div>
@@ -202,5 +212,3 @@ export default function IssueDetailPage() {
     </div>
   );
 }
-
-import { doc } from "firebase/firestore";
