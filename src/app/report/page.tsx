@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -16,6 +17,30 @@ import { useFirestore, useUser } from "@/firebase";
 import { collection, doc, writeBatch } from "firebase/firestore";
 import { addHours } from "date-fns";
 import Image from "next/image";
+
+/**
+ * Utility to compress a base64 image string to ensure it fits within Firestore's 1MB limit.
+ */
+const compressImage = (dataUri: string, maxWidth: number = 800): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(maxWidth / img.width, 1);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // Using JPEG format with 0.7 quality to significantly reduce size
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      } else {
+        resolve(dataUri);
+      }
+    };
+    img.src = dataUri;
+  });
+};
 
 export default function ReportPage() {
   const { user } = useUser();
@@ -45,12 +70,23 @@ export default function ReportPage() {
     fileInputRef.current?.click();
   };
 
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({ title: "Large File", description: "This image is very large. We will compress it for you.", variant: "default" });
+      }
+
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoDataUri(reader.result as string);
+      reader.onloadend = async () => {
+        const rawDataUri = reader.result as string;
+        try {
+          const compressed = await compressImage(rawDataUri);
+          setPhotoDataUri(compressed);
+        } catch (err) {
+          console.error("Compression error:", err);
+          setPhotoDataUri(rawDataUri);
+        }
       };
       reader.readAsDataURL(file);
     }
