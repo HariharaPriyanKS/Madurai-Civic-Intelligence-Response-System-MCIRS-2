@@ -124,13 +124,13 @@ service cloud.firestore {
      * @description Master issue collection for city-wide oversight.
      * @path /issues_all/{issueId}
      * @allow get: if isSignedIn();
-     * @allow list: if isHighAuthority();
+     * @allow list: if isSignedIn(); // Updated to allow authenticated public listing for the portal
      * @deny create, update: if !isSignedIn();
-     * @principle Centralized repository with high-authority query access.
+     * @principle Centralized repository with public-facing aggregate potential.
      */
     match /issues_all/{issueId} {
       allow get: if isSignedIn();
-      allow list: if isHighAuthority();
+      allow list: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.reportedByUserId == request.auth.uid;
       allow update: if isSignedIn() && (
         resource.data.reportedByUserId == request.auth.uid || 

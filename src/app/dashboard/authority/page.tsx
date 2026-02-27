@@ -4,22 +4,26 @@ import { Navbar } from "@/components/layout/Navbar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { PriorityBadge } from "@/components/dashboard/PriorityBadge";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { processAnalytics } from "@/lib/analytics-logic";
 import { calculateSeriousnessScore, getPriorityTag } from "@/lib/priority-logic";
-import { calculateDisplayStatus } from "@/lib/issue-logic";
 import { WardComplaintsChart, StatusDistributionChart, AgeDistributionChart } from "@/components/analytics/AnalyticsCharts";
 import { NegligenceAlerts } from "@/components/analytics/NegligenceAlerts";
 import { Button } from "@/components/ui/button";
-import { Download, Filter, TrendingUp, AlertTriangle } from "lucide-react";
+import { Download, TrendingUp, AlertTriangle, Loader2 } from "lucide-react";
 import { useMemo } from "react";
 
 export default function AuthorityDashboard() {
+  const { user } = useUser();
   const db = useFirestore();
-  const issuesRef = useMemoFirebase(() => collection(db, "issues_all"), [db]);
+  
+  const issuesRef = useMemoFirebase(() => {
+    if (!user) return null;
+    return collection(db, "issues_all");
+  }, [db, user]);
+
   const { data: issues, isLoading } = useCollection(issuesRef);
 
   const stats = issues ? processAnalytics(issues) : null;
@@ -60,13 +64,10 @@ export default function AuthorityDashboard() {
           </div>
         </header>
 
-        {isLoading ? (
-          <div className="animate-pulse space-y-8">
-            <div className="h-32 bg-muted rounded-xl" />
-            <div className="grid grid-cols-2 gap-8">
-              <div className="h-96 bg-muted rounded-xl" />
-              <div className="h-96 bg-muted rounded-xl" />
-            </div>
+        {isLoading || !user ? (
+          <div className="flex flex-col items-center justify-center py-40 gap-4">
+            <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+            <p className="text-sm font-medium text-muted-foreground animate-pulse">Establishing Secure Connection...</p>
           </div>
         ) : (
           <>
