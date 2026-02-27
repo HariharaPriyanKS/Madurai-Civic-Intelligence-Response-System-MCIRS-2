@@ -47,6 +47,14 @@ service cloud.firestore {
       return isSignedIn() && data != null && data.wardIds != null && wardId in data.wardIds;
     }
 
+    // Helper for "Support" action (CSWPS)
+    // Allows updating only the supportCount field if it's an increment
+    function isSupportIncrement() {
+      return isSignedIn() && 
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['supportCount']) &&
+             request.resource.data.supportCount == resource.data.supportCount + 1;
+    }
+
     // --- COLLECTION RULES ---
 
     match /user_profiles/{userId} {
@@ -79,7 +87,8 @@ service cloud.firestore {
         resource.data.reportedByUserId == request.auth.uid || 
         resource.data.assignedToUserId == request.auth.uid || 
         isHighAuthority() ||
-        isOfficerForWard(resource.data.wardId)
+        isOfficerForWard(resource.data.wardId) ||
+        isSupportIncrement()
       );
       allow delete: if isAdmin();
 
@@ -112,14 +121,14 @@ service cloud.firestore {
     match /user_profiles/{userId}/reported_issues/{issueId} {
       allow get, list: if isOwner(userId) || isHighAuthority();
       allow create: if isOwner(userId) && request.resource.data.reportedByUserId == userId;
-      allow update: if isExistingOwner(userId) || isHighAuthority() || (isSignedIn() && request.auth.uid == resource.data.assignedToUserId);
+      allow update: if isExistingOwner(userId) || isHighAuthority() || (isSignedIn() && request.auth.uid == resource.data.assignedToUserId) || isSupportIncrement();
       allow delete: if isAdmin();
     }
 
     match /user_profiles/{userId}/assigned_issues/{issueId} {
       allow get, list: if isOwner(userId) || isHighAuthority();
       allow create: if isHighAuthority() || isAdmin();
-      allow update: if isExistingOwner(userId) || isHighAuthority();
+      allow update: if isExistingOwner(userId) || isHighAuthority() || isSupportIncrement();
       allow delete: if isAdmin();
     }
 
@@ -127,7 +136,7 @@ service cloud.firestore {
       allow get, list: if isOfficerForWard(wardId) || isHighAuthority();
       // Allow reporter to create the denormalized entry for officers to see
       allow create: if isSignedIn() && request.resource.data.reportedByUserId == request.auth.uid;
-      allow update: if isOfficerForWard(wardId) || isHighAuthority() || isAdmin();
+      allow update: if isOfficerForWard(wardId) || isHighAuthority() || isAdmin() || isSupportIncrement();
       allow delete: if isAdmin();
     }
   }
