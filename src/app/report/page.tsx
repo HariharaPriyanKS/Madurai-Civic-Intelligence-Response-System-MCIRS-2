@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,13 +9,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, Mic, MapPin, Send, Loader2, CheckCircle2 } from "lucide-react";
+import { Camera, Mic, MapPin, Send, Loader2, CheckCircle2, X, Music } from "lucide-react";
 import { WARDS, CATEGORIES, SLA_DEADLINES } from "@/lib/constants";
 import { automatedIssueCategorization } from "@/ai/flows/automated-issue-categorization";
 import { useToast } from "@/hooks/use-toast";
 import { useFirestore, useUser } from "@/firebase";
 import { collection, doc, writeBatch } from "firebase/firestore";
 import { addHours } from "date-fns";
+import Image from "next/image";
 
 export default function ReportPage() {
   const { user } = useUser();
@@ -30,22 +31,57 @@ export default function ReportPage() {
   const [location, setLocation] = useState("");
   const [ward, setWard] = useState("");
   const [category, setCategory] = useState("");
+  
+  // Photo & Voice States
+  const [photoDataUri, setPhotoDataUri] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPhotoDataUri(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleVoiceMessageClick = () => {
+    if (isRecording) {
+      setIsRecording(false);
+      // Simulate transcription
+      setDescription((prev) => prev + (prev ? " " : "") + "[Voice Transcript: Large garbage overflow detected near the main junction. Immediate cleanup needed.]");
+      toast({ title: "Transcription Complete", description: "Your voice message has been converted to text." });
+    } else {
+      setIsRecording(true);
+      toast({ title: "Recording...", description: "Speak clearly. Click again to stop and transcribe." });
+    }
+  };
 
   const handleAutoCategorize = async () => {
-    if (!description) {
-      toast({ title: "Error", description: "Please provide a description first", variant: "destructive" });
+    if (!description && !photoDataUri) {
+      toast({ title: "Error", description: "Please provide a description or photo first", variant: "destructive" });
       return;
     }
 
     setLoading(true);
     try {
       const result = await automatedIssueCategorization({
-        issueDescription: description,
-        locationDescription: location
+        issueDescription: description || "Analyzing uploaded photo...",
+        locationDescription: location,
+        imageDataUri: photoDataUri || undefined
       });
       
       setCategory(result.issueCategory);
       setWard(result.wardName);
+      if (!description) setDescription(result.reasoning);
+
       toast({ 
         title: "AI Analysis Complete", 
         description: `Categorized as ${result.issueCategory} in ${result.wardName}` 
@@ -91,7 +127,8 @@ export default function ReportPage() {
         isOfflineReport: false,
         language: "en",
         autoDetectedWard: false,
-        beforeImage: `https://picsum.photos/seed/${issueId}/800/600`
+        beforeImage: photoDataUri || `https://picsum.photos/seed/${issueId}/800/600`,
+        hasExifData: !!photoDataUri, // Simulated for the prototype
       };
 
       // 1. Master collection
@@ -163,20 +200,70 @@ export default function ReportPage() {
           <form onSubmit={handleSubmit} className="space-y-8">
             <Card className="border-none shadow-lg">
               <CardHeader>
-                <CardTitle>Issue Details</CardTitle>
-                <CardDescription>Describe the problem. You can use English or Tamil.</CardDescription>
+                <CardTitle>Issue Evidence</CardTitle>
+                <CardDescription>Attach visual or audio proof to accelerate resolution.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Button type="button" variant="outline" className="h-24 flex-col gap-2 rounded-2xl">
-                    <Camera className="h-6 w-6" />
-                    <span>Upload Photo</span>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    ref={fileInputRef} 
+                    onChange={handlePhotoChange}
+                  />
+                  <Button 
+                    type="button" 
+                    variant={photoDataUri ? "secondary" : "outline"} 
+                    className="h-24 flex-col gap-2 rounded-2xl relative overflow-hidden group"
+                    onClick={handlePhotoUploadClick}
+                  >
+                    {photoDataUri ? (
+                      <>
+                        <Image src={photoDataUri} alt="Preview" fill className="object-cover opacity-20 group-hover:opacity-40 transition-opacity" />
+                        <CheckCircle2 className="h-6 w-6 text-green-600 z-10" />
+                        <span className="z-10 font-bold">Photo Attached</span>
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="h-6 w-6" />
+                        <span>Upload Photo</span>
+                      </>
+                    )}
                   </Button>
-                  <Button type="button" variant="outline" className="h-24 flex-col gap-2 rounded-2xl">
-                    <Mic className="h-6 w-6" />
-                    <span>Voice Message</span>
+                  <Button 
+                    type="button" 
+                    variant={isRecording ? "destructive" : "outline"} 
+                    className={`h-24 flex-col gap-2 rounded-2xl ${isRecording ? 'animate-pulse' : ''}`}
+                    onClick={handleVoiceMessageClick}
+                  >
+                    {isRecording ? (
+                      <>
+                        <Music className="h-6 w-6" />
+                        <span>Stop Recording</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="h-6 w-6" />
+                        <span>Voice Message</span>
+                      </>
+                    )}
                   </Button>
                 </div>
+
+                {photoDataUri && (
+                  <div className="relative aspect-video rounded-xl overflow-hidden border">
+                    <Image src={photoDataUri} alt="Preview" fill className="object-cover" />
+                    <Button 
+                      size="icon" 
+                      variant="destructive" 
+                      className="absolute top-2 right-2 rounded-full h-8 w-8"
+                      onClick={() => setPhotoDataUri(null)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="description">Detailed Description</Label>
@@ -196,7 +283,7 @@ export default function ReportPage() {
                     variant="secondary" 
                     size="sm" 
                     onClick={handleAutoCategorize}
-                    disabled={loading || !description}
+                    disabled={loading || (!description && !photoDataUri)}
                   >
                     {loading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : null}
                     Auto-Fill using AI
