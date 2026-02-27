@@ -6,11 +6,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { WARDS } from "@/lib/constants";
-import { Trophy, Activity, CheckCircle, Search, TrendingUp, Clock, Loader2 } from "lucide-react";
+import { Trophy, Activity, CheckCircle, Search, TrendingUp, Clock, Loader2, BarChart3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useState, useEffect, useMemo } from "react";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
+import { WardComplaintsChart } from "@/components/analytics/AnalyticsCharts";
+import { processAnalytics } from "@/lib/analytics-logic";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function PublicPortal() {
   const [search, setSearch] = useState("");
@@ -19,15 +22,19 @@ export default function PublicPortal() {
   const db = useFirestore();
 
   const issuesRef = useMemoFirebase(() => {
-    if (!user) return null;
+    // Public portal listens to all issues
     return collection(db, "issues_all");
-  }, [db, user]);
+  }, [db]);
 
   const { data: issues, isLoading } = useCollection(issuesRef);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  const stats = useMemo(() => {
+    return issues ? processAnalytics(issues) : null;
+  }, [issues]);
 
   const wardLeaderboard = useMemo(() => {
     if (!isMounted || !issues) return [];
@@ -48,7 +55,7 @@ export default function PublicPortal() {
     }).sort((a, b) => b.score - a.score);
   }, [issues, isMounted]);
 
-  const filtered = useMemo(() => {
+  const filteredLeaderboard = useMemo(() => {
     return wardLeaderboard.filter(w => 
       w.name.toLowerCase().includes(search.toLowerCase()) || 
       w.id.toString().includes(search)
@@ -72,7 +79,7 @@ export default function PublicPortal() {
       <Navbar />
       <div className="container mx-auto px-4 pt-32 pb-12">
         <header className="mb-12 text-center">
-          <Badge className="mb-4 bg-primary/10 text-primary border-primary/20">Transparency Portal 2.0</Badge>
+          <Badge className="mb-4 bg-primary/10 text-primary border-primary/20 px-4 py-1">Transparency Portal 2.0</Badge>
           <h1 className="text-4xl font-headline font-bold text-primary mb-4">Madurai Live Performance Dashboard</h1>
           <p className="text-muted-foreground max-w-2xl mx-auto">
             Aggregated governance metrics from all 100 wards. Real-time data from the Evidence-Based Accountability Engine.
@@ -133,69 +140,91 @@ export default function PublicPortal() {
               </Card>
             </div>
 
-            <Card className="border-none shadow-xl">
-              <CardHeader className="border-b bg-muted/20">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div>
-                    <CardTitle>Ward Leaderboard</CardTitle>
-                    <CardDescription>Performance ranking based on resolution rate</CardDescription>
-                  </div>
-                  <div className="relative w-full md:w-72">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                      placeholder="Search Ward..." 
-                      className="pl-9 rounded-xl"
-                      value={search}
-                      onChange={(e) => setSearch(e.target.value)}
-                    />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="w-[80px]">Rank</TableHead>
-                      <TableHead>Ward</TableHead>
-                      <TableHead>Resolution Rate</TableHead>
-                      <TableHead>Resolved / Total</TableHead>
-                      <TableHead className="text-right">Trend</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filtered.map((w, i) => (
-                      <TableRow key={w.id}>
-                        <TableCell className="font-bold">
-                          {i < 3 ? (
-                            <div className="flex items-center gap-2">
-                              <Trophy className={`h-4 w-4 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : 'text-amber-700'}`} />
-                              #{i + 1}
-                            </div>
-                          ) : `#${i + 1}`}
-                        </TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-semibold">Ward {w.id}</p>
-                            <p className="text-xs text-muted-foreground">{w.name}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={w.score > 80 ? "default" : "outline"} className={w.score > 80 ? "bg-green-600" : ""}>
-                            {w.score}%
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm font-medium">
-                          {w.resolved} / {w.total}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {w.trend === 'up' ? <TrendingUp className="inline h-4 w-4 text-green-500" /> : <Activity className="inline h-4 w-4 text-orange-500" />}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
+            <Tabs defaultValue="leaderboard" className="space-y-8">
+              <TabsList className="bg-muted p-1 rounded-xl h-14">
+                <TabsTrigger value="leaderboard" className="rounded-lg h-12 gap-2 text-md">
+                  <Trophy className="h-5 w-5" /> Efficiency Leaderboard
+                </TabsTrigger>
+                <TabsTrigger value="analytics" className="rounded-lg h-12 gap-2 text-md">
+                  <BarChart3 className="h-5 w-5" /> Report Volume Graph
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="leaderboard">
+                <Card className="border-none shadow-xl">
+                  <CardHeader className="border-b bg-muted/20">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      <div>
+                        <CardTitle>Efficiency Leaderboard</CardTitle>
+                        <CardDescription>Performance ranking based on resolution rate (Total Resolved / Total Reported)</CardDescription>
+                      </div>
+                      <div className="relative w-full md:w-72">
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                        <input 
+                          placeholder="Search Ward..." 
+                          className="pl-9 rounded-xl flex h-10 w-full border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          value={search}
+                          onChange={(e) => setSearch(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/50">
+                          <TableHead className="w-[80px]">Rank</TableHead>
+                          <TableHead>Ward</TableHead>
+                          <TableHead>Resolution Rate</TableHead>
+                          <TableHead>Resolved / Total</TableHead>
+                          <TableHead className="text-right">Trend</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredLeaderboard.map((w, i) => (
+                          <TableRow key={w.id}>
+                            <TableCell className="font-bold">
+                              {i < 3 ? (
+                                <div className="flex items-center gap-2">
+                                  <Trophy className={`h-4 w-4 ${i === 0 ? 'text-amber-500' : i === 1 ? 'text-slate-400' : 'text-amber-700'}`} />
+                                  #{i + 1}
+                                </div>
+                              ) : `#${i + 1}`}
+                            </TableCell>
+                            <TableCell>
+                              <div>
+                                <p className="font-semibold">Ward {w.id}</p>
+                                <p className="text-xs text-muted-foreground">{w.name}</p>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={w.score > 80 ? "default" : "outline"} className={w.score > 80 ? "bg-green-600" : ""}>
+                                {w.score}%
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm font-medium">
+                              {w.resolved} / {w.total}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {w.trend === 'up' ? <TrendingUp className="inline h-4 w-4 text-green-500" /> : <Activity className="inline h-4 w-4 text-orange-500" />}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="analytics">
+                {stats && (
+                  <WardComplaintsChart 
+                    data={stats.wardStats} 
+                    isPublic={true} 
+                  />
+                )}
+              </TabsContent>
+            </Tabs>
           </>
         )}
       </div>

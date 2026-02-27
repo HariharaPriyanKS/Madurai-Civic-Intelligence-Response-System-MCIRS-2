@@ -7,17 +7,20 @@ import { Badge } from "@/components/ui/badge";
 import { PriorityBadge } from "@/components/dashboard/PriorityBadge";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
-import { processAnalytics } from "@/lib/analytics-logic";
+import { processAnalytics, AnalyticsFilters } from "@/lib/analytics-logic";
 import { calculateSeriousnessScore, getPriorityTag } from "@/lib/priority-logic";
 import { WardComplaintsChart, StatusDistributionChart, AgeDistributionChart } from "@/components/analytics/AnalyticsCharts";
 import { NegligenceAlerts } from "@/components/analytics/NegligenceAlerts";
 import { Button } from "@/components/ui/button";
-import { Download, TrendingUp, AlertTriangle, Loader2 } from "lucide-react";
-import { useMemo } from "react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Download, TrendingUp, AlertTriangle, Loader2, FilterX } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CATEGORIES } from "@/lib/constants";
 
 export default function AuthorityDashboard() {
   const { user } = useUser();
   const db = useFirestore();
+  const [filters, setFilters] = useState<AnalyticsFilters>({});
   
   const issuesRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -26,7 +29,9 @@ export default function AuthorityDashboard() {
 
   const { data: issues, isLoading } = useCollection(issuesRef);
 
-  const stats = issues ? processAnalytics(issues) : null;
+  const stats = useMemo(() => {
+    return issues ? processAnalytics(issues, filters) : null;
+  }, [issues, filters]);
 
   const topCriticalIssues = useMemo(() => {
     if (!issues) return [];
@@ -45,6 +50,8 @@ export default function AuthorityDashboard() {
       .slice(0, 10);
   }, [issues]);
 
+  const resetFilters = () => setFilters({});
+
   return (
     <div className="min-h-screen bg-background pb-20">
       <Navbar />
@@ -55,7 +62,7 @@ export default function AuthorityDashboard() {
             <p className="text-muted-foreground">Impact-weighted prioritization and community-driven oversight.</p>
           </div>
           <div className="flex gap-4">
-            <Button variant="outline" className="rounded-xl h-12 gap-2">
+            <Button variant="outline" className="rounded-xl h-12 gap-2" onClick={() => window.print()}>
               <Download className="h-4 w-4" /> Governance Report
             </Button>
             <Button className="rounded-xl h-12 gap-2">
@@ -71,6 +78,49 @@ export default function AuthorityDashboard() {
           </div>
         ) : (
           <>
+            {/* Filter Bar */}
+            <div className="mb-8 flex flex-wrap items-center gap-4 p-4 bg-muted/20 rounded-2xl border">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase text-muted-foreground">Filter By:</span>
+                <Select 
+                  value={filters.category || "all"} 
+                  onValueChange={(val) => setFilters(prev => ({ ...prev, category: val === "all" ? undefined : val }))}
+                >
+                  <SelectTrigger className="w-[180px] rounded-xl">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    {CATEGORIES.map(cat => (
+                      <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Select 
+                value={filters.status || "all"} 
+                onValueChange={(val) => setFilters(prev => ({ ...prev, status: val === "all" ? undefined : val }))}
+              >
+                <SelectTrigger className="w-[180px] rounded-xl">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="Created">Newly Created</SelectItem>
+                  <SelectItem value="Acknowledged">Acknowledged</SelectItem>
+                  <SelectItem value="InProgress">In Progress</SelectItem>
+                  <SelectItem value="ResolvedByOfficer">Resolved</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {Object.keys(filters).length > 0 && (
+                <Button variant="ghost" size="sm" onClick={resetFilters} className="gap-2 text-muted-foreground">
+                  <FilterX className="h-4 w-4" /> Reset
+                </Button>
+              )}
+            </div>
+
             <NegligenceAlerts alerts={stats?.alerts || { worstWard: '...', worstDept: '...', worstWorker: '...', worstContractor: '...' }} />
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
@@ -141,8 +191,12 @@ export default function AuthorityDashboard() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <WardComplaintsChart data={stats?.wardStats || []} />
-              <AgeDistributionChart data={stats?.ageStats || []} />
+              {stats && (
+                <>
+                  <WardComplaintsChart data={stats.wardStats} />
+                  <AgeDistributionChart data={stats.ageStats} />
+                </>
+              )}
             </div>
           </>
         )}

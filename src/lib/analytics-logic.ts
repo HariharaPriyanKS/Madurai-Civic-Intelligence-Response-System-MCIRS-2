@@ -3,8 +3,8 @@
  * Processes raw issue data into aggregated metrics for charts and alerts.
  */
 
-import { differenceInHours } from "date-fns";
-import { WARDS, CATEGORIES, SLA_DEADLINES } from "./constants";
+import { differenceInHours, isWithinInterval, startOfDay, endOfDay } from "date-fns";
+import { WARDS, CATEGORIES } from "./constants";
 
 export interface AnalyticsData {
   wardStats: any[];
@@ -19,15 +19,53 @@ export interface AnalyticsData {
   };
 }
 
-export function processAnalytics(issues: any[]): AnalyticsData {
+export interface AnalyticsFilters {
+  dateRange?: { from: Date; to: Date } | null;
+  category?: string;
+  status?: string;
+  department?: string;
+}
+
+export function processAnalytics(issues: any[], filters?: AnalyticsFilters): AnalyticsData {
   const now = new Date();
 
-  // 1. Ward-wise Aggregation
-  const wardMap = new Map();
-  WARDS.forEach(w => wardMap.set(w.name, { name: w.name, total: 0, resolved: 0, pending: 0, slaBreached: 0 }));
+  // Apply Filters
+  const filteredIssues = issues.filter(issue => {
+    if (filters?.category && issue.issueCategoryId !== filters.category) return false;
+    if (filters?.status && issue.status !== filters.status) return false;
+    if (filters?.dateRange) {
+      const reportDate = new Date(issue.reportedAt);
+      if (!isWithinInterval(reportDate, { 
+        start: startOfDay(filters.dateRange.from), 
+        end: endOfDay(filters.dateRange.to) 
+      })) return false;
+    }
+    // Department filtering logic (assuming category maps 1:1 to department for now)
+    return true;
+  });
 
-  issues.forEach(issue => {
-    const stats = wardMap.get(issue.wardId) || { name: issue.wardId, total: 0, resolved: 0, pending: 0, slaBreached: 0 };
+  // 1. Ward-wise Aggregation (All 100 Wards)
+  const wardMap = new Map();
+  WARDS.forEach(w => wardMap.set(w.name, { 
+    name: w.name, 
+    id: w.id,
+    total: 0, 
+    resolved: 0, 
+    pending: 0, 
+    slaBreached: 0,
+    slaBreachRate: 0
+  }));
+
+  filteredIssues.forEach(issue => {
+    const stats = wardMap.get(issue.wardId) || { 
+      name: issue.wardId, 
+      id: issue.wardId, 
+      total: 0, 
+      resolved: 0, 
+      pending: 0, 
+      slaBreached: 0,
+      slaBreachRate: 0
+    };
     stats.total++;
     if (issue.status === 'Closed' || issue.status === 'ResolvedByOfficer') stats.resolved++;
     else stats.pending++;
@@ -35,20 +73,26 @@ export function processAnalytics(issues: any[]): AnalyticsData {
     wardMap.set(issue.wardId, stats);
   });
 
-  const wardStats = Array.from(wardMap.values()).sort((a, b) => b.total - a.total);
+  // Calculate rates and sort
+  const wardStats = Array.from(wardMap.values())
+    .map(w => ({
+      ...w,
+      slaBreachRate: w.total > 0 ? Math.round((w.slaBreached / w.total) * 100) : 0
+    }))
+    .sort((a, b) => b.total - a.total);
 
   // 2. Status Distribution
   const statusCounts = {
-    slaBreached: issues.filter(i => i.isSlaBreached).length,
-    nearDeadline: issues.filter(i => !i.isSlaBreached && i.status !== 'Closed' && i.status !== 'ResolvedByOfficer').length, // Mock logic for "near"
-    pendingAck: issues.filter(i => i.status === 'Created').length,
-    withinSla: issues.filter(i => !i.isSlaBreached && (i.status === 'Closed' || i.status === 'ResolvedByOfficer')).length
+    slaBreached: filteredIssues.filter(i => i.isSlaBreached).length,
+    nearDeadline: filteredIssues.filter(i => !i.isSlaBreached && i.status !== 'Closed' && i.status !== 'ResolvedByOfficer').length,
+    pendingAck: filteredIssues.filter(i => i.status === 'Created').length,
+    withinSla: filteredIssues.filter(i => !i.isSlaBreached && (i.status === 'Closed' || i.status === 'ResolvedByOfficer')).length
   };
 
   const statusStats = [
-    { name: 'SLA Breached', value: statusCounts.slaBreached, fill: 'hsl(var(--destructive))' },
-    { name: 'Near Deadline', value: statusCounts.nearDeadline, fill: 'hsl(var(--secondary))' },
-    { name: 'Pending Ack', value: statusCounts.pendingAck, fill: 'hsl(var(--primary))' },
+    { name: 'SLA Breached', value: statusCounts.slaBreached, fill: '#ef4444' },
+    { name: 'Near Deadline', value: statusCounts.nearDeadline, fill: '#f97316' },
+    { name: 'Pending Ack', value: statusCounts.pendingAck, fill: '#1F66CC' },
     { name: 'Within SLA', value: statusCounts.withinSla, fill: '#10b981' }
   ];
 
@@ -56,7 +100,7 @@ export function processAnalytics(issues: any[]): AnalyticsData {
   const deptMap = new Map();
   CATEGORIES.forEach(cat => deptMap.set(cat, { name: cat, total: 0, pending: 0, slaBreachCount: 0 }));
 
-  issues.forEach(issue => {
+  filteredIssues.forEach(issue => {
     const stats = deptMap.get(issue.issueCategoryId) || { name: issue.issueCategoryId, total: 0, pending: 0, slaBreachCount: 0 };
     stats.total++;
     if (issue.status !== 'Closed') stats.pending++;
@@ -77,7 +121,7 @@ export function processAnalytics(issues: any[]): AnalyticsData {
     { range: '7d+', count: 0 }
   ];
 
-  issues.forEach(issue => {
+  filteredIssues.forEach(issue => {
     if (issue.status === 'Closed') return;
     const hours = differenceInHours(now, new Date(issue.reportedAt));
     if (hours <= 24) ageBuckets[0].count++;
@@ -98,7 +142,7 @@ export function processAnalytics(issues: any[]): AnalyticsData {
     alerts: {
       worstWard,
       worstDept,
-      worstWorker: "Simulation Active", // Placeholder for worker tracking
+      worstWorker: "Simulation Active",
       worstContractor: "Simulation Active"
     }
   };

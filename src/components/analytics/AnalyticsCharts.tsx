@@ -2,54 +2,126 @@
 
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { AnalyticsData } from "@/lib/analytics-logic";
+import { cn } from "@/lib/utils";
 
-export function WardComplaintsChart({ data }: { data: AnalyticsData['wardStats'] }) {
-  const topWards = data.slice(0, 20); // Show top 20 for readability
+export function WardComplaintsChart({ 
+  data, 
+  highlightWardId,
+  isPublic = false 
+}: { 
+  data: AnalyticsData['wardStats'], 
+  highlightWardId?: string,
+  isPublic?: boolean
+}) {
+  // Color logic based on descending rank
+  const getBarColor = (index: number) => {
+    if (index < 5) return "#ef4444"; // Top 5: Red
+    if (index < 15) return "#f97316"; // Next 10: Orange
+    return "#14b8a6"; // Remaining: Teal
+  };
 
   return (
-    <Card className="border-none shadow-lg col-span-2">
-      <CardHeader>
-        <CardTitle>Highest Complaint Wards</CardTitle>
-        <CardDescription>Real-time volume distribution across Madurai (Top 20)</CardDescription>
+    <Card className="border-none shadow-xl col-span-full">
+      <CardHeader className="bg-muted/10 border-b">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-2xl font-bold">Ward Performance Ranking</CardTitle>
+            <CardDescription>
+              {isPublic 
+                ? "City-wide reporting distribution by ward. (Transparency View)" 
+                : "Descending rank of complaint volume across all 100 wards."}
+            </CardDescription>
+          </div>
+          <div className="flex gap-4 text-xs font-bold uppercase tracking-tighter">
+            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#ef4444] rounded-sm" /> High Risk</div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#f97316] rounded-sm" /> Moderate</div>
+            <div className="flex items-center gap-1"><div className="w-3 h-3 bg-[#14b8a6] rounded-sm" /> Stable</div>
+          </div>
+        </div>
       </CardHeader>
-      <CardContent className="h-[400px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={topWards} layout="vertical" margin={{ left: 40, right: 20 }}>
-            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-            <XAxis type="number" hide />
-            <YAxis 
-              dataKey="name" 
-              type="category" 
-              width={100} 
-              tick={{ fontSize: 10, fontWeight: 600 }}
-            />
-            <Tooltip 
-              cursor={{ fill: 'rgba(0,0,0,0.05)' }}
-              content={({ active, payload }) => {
-                if (active && payload && payload.length) {
-                  const d = payload[0].payload;
-                  return (
-                    <div className="bg-white p-4 border rounded-xl shadow-2xl space-y-1">
-                      <p className="font-bold text-primary">{d.name}</p>
-                      <p className="text-xs">Total: {d.total}</p>
-                      <p className="text-xs text-green-600">Resolved: {d.resolved}</p>
-                      <p className="text-xs text-orange-600">Pending: {d.pending}</p>
-                      <p className="text-xs text-red-600 font-bold">SLA Breached: {d.slaBreached}</p>
-                    </div>
-                  );
-                }
-                return null;
-              }}
-            />
-            <Bar dataKey="total" radius={[0, 4, 4, 0]}>
-              {topWards.map((entry, index) => (
-                <Cell key={`cell-${index}`} fill={index < 5 ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+      <CardContent className="pt-6">
+        <ScrollArea className="h-[600px] pr-4">
+          <div className="h-[2500px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart 
+                data={data} 
+                layout="vertical" 
+                margin={{ left: 120, right: 40, top: 20, bottom: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(0,0,0,0.05)" />
+                <XAxis type="number" hide />
+                <YAxis 
+                  dataKey="name" 
+                  type="category" 
+                  width={110} 
+                  tick={(props) => {
+                    const { x, y, payload } = props;
+                    const isHighlighted = highlightWardId && payload.value.includes(highlightWardId);
+                    return (
+                      <text 
+                        x={x} 
+                        y={y} 
+                        dy={4} 
+                        textAnchor="end" 
+                        fill={isHighlighted ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"}
+                        className={cn("text-[10px] transition-colors", isHighlighted && "font-bold text-sm")}
+                      >
+                        {payload.value}
+                      </text>
+                    );
+                  }}
+                />
+                <Tooltip 
+                  cursor={{ fill: 'rgba(0,0,0,0.03)' }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const d = payload[0].payload;
+                      return (
+                        <div className="bg-white p-4 border-2 rounded-2xl shadow-2xl space-y-2 min-w-[200px]">
+                          <p className="font-bold text-primary border-b pb-1">Ward {d.id}: {d.name}</p>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs font-medium">
+                            <span className="text-muted-foreground">Total Reports:</span>
+                            <span className="text-right font-bold">{d.total}</span>
+                            
+                            {!isPublic && (
+                              <>
+                                <span className="text-muted-foreground">Pending:</span>
+                                <span className="text-right font-bold text-orange-600">{d.pending}</span>
+                                
+                                <span className="text-muted-foreground">Resolved:</span>
+                                <span className="text-right font-bold text-green-600">{d.resolved}</span>
+                                
+                                <span className="text-muted-foreground">SLA Breach:</span>
+                                <span className="text-right font-bold text-red-600">{d.slaBreachRate}%</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
+                <Bar 
+                  dataKey="total" 
+                  radius={[0, 4, 4, 0]} 
+                  barSize={20}
+                  animationDuration={1500}
+                >
+                  {data.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={getBarColor(index)} 
+                      fillOpacity={highlightWardId && !entry.name.includes(highlightWardId) ? 0.6 : 1}
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </ScrollArea>
       </CardContent>
     </Card>
   );
@@ -99,7 +171,7 @@ export function AgeDistributionChart({ data }: { data: AnalyticsData['ageStats']
             <XAxis dataKey="range" />
             <YAxis />
             <Tooltip />
-            <Bar dataKey="count" fill="hsl(var(--secondary))" radius={[4, 4, 0, 0]} />
+            <Bar dataKey="count" fill="#24D8D8" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </CardContent>
