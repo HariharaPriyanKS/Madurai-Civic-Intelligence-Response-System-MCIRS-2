@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useDoc, useCollection, useFirestore, useMemoFirebase } from "@/firebase";
@@ -11,7 +10,7 @@ import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { PriorityBadge } from "@/components/dashboard/PriorityBadge";
 import { calculateDisplayStatus } from "@/lib/issue-logic";
 import { calculateSeriousnessScore, getPriorityTag } from "@/lib/priority-logic";
-import { MapPin, Calendar, Clock, CheckCircle2, History, Loader2, AlertTriangle, ArrowLeft } from "lucide-react";
+import { MapPin, Calendar, Clock, CheckCircle2, History, Loader2, AlertTriangle, ArrowLeft, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import { collection, query, orderBy, doc } from "firebase/firestore";
 import { useState, useEffect } from "react";
