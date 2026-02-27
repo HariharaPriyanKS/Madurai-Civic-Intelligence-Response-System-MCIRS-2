@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useRef, useState } from "react";
@@ -10,17 +9,15 @@ import { calculateDisplayStatus } from "@/lib/issue-logic";
 import { Camera, MapPin, CheckCircle, Clock, ShieldCheck, AlertTriangle, BarChart3, ListChecks, Loader2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter } from "@/firebase";
+import { FirestorePermissionError } from "@/firebase/errors";
 import { collection, doc, writeBatch } from "firebase/firestore";
 import { processAnalytics } from "@/lib/analytics-logic";
 import { StatusDistributionChart, AgeDistributionChart } from "@/components/analytics/AnalyticsCharts";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import Image from "next/image";
 
-/**
- * Utility to compress a base64 image string to ensure it fits within Firestore's 1MB limit.
- */
-const compressImage = (dataUri: string, maxWidth: number = 1000, quality: number = 0.6): Promise<string> => {
+const compressImage = (dataUri: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new window.Image();
     img.onload = () => {
@@ -52,7 +49,6 @@ export default function OfficialDashboard() {
   const db = useFirestore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedIssueId, setSelectedIssueId] = useState<string | null>(null);
 
   const issuesRef = useMemoFirebase(() => {
     if (!user) return null;
@@ -62,63 +58,62 @@ export default function OfficialDashboard() {
   const { data: issues, isLoading } = useCollection(issuesRef);
   const stats = issues ? processAnalytics(issues) : null;
 
-  const handleResolve = async (issue: any, photoDataUri: string) => {
-    try {
-      const batch = writeBatch(db);
-      const proofId = `PR-${Date.now()}`;
-      const resolutionTime = new Date().toISOString();
-      
-      const updateData = {
-        status: "ResolvedByOfficer",
-        resolutionProofId: proofId,
-        resolvedAt: resolutionTime,
-        isProofVerified: true,
-        geoCoordinatesVerified: true,
-        timestampVerified: true,
-        afterImage: photoDataUri
-      };
+  const handleResolve = (issue: any, photoDataUri: string) => {
+    const batch = writeBatch(db);
+    const proofId = `PR-${Date.now()}`;
+    const resolutionTime = new Date().toISOString();
+    
+    const updateData = {
+      status: "ResolvedByOfficer",
+      resolutionProofId: proofId,
+      resolvedAt: resolutionTime,
+      isProofVerified: true,
+      geoCoordinatesVerified: true,
+      timestampVerified: true,
+      afterImage: photoDataUri
+    };
 
-      // Atomic updates to all denormalized paths
-      batch.update(doc(db, "issues_all", issue.id), updateData);
-      
-      // Update citizen scoped path
-      if (issue.reportedByUserId) {
-        batch.update(doc(db, "user_profiles", issue.reportedByUserId, "reported_issues", issue.id), updateData);
-      }
-      
-      // Update ward scoped path
-      if (issue.wardId) {
-        batch.update(doc(db, "wards", issue.wardId, "issues_for_ward_officers", issue.id), updateData);
-      }
-
-      // Create timeline entry
-      const timelineRef = doc(collection(db, "issues_all", issue.id, "timeline"));
-      batch.set(timelineRef, {
-        id: timelineRef.id,
-        issueId: issue.id,
-        timestamp: resolutionTime,
-        eventType: "ResolvedByOfficer",
-        description: "Official has uploaded resolution proof and marked the task as resolved.",
-        actorUserId: user?.uid,
-        relatedProofId: proofId
-      });
-
-      await batch.commit();
-
-      toast({
-        title: "Proof Uploaded & Task Resolved",
-        description: "Geolocation and Timestamp recorded. Mandatory evidence logic applied.",
-      });
-    } catch (err: any) {
-      toast({ title: "Resolution Failed", description: err.message, variant: "destructive" });
+    batch.update(doc(db, "issues_all", issue.id), updateData);
+    
+    if (issue.reportedByUserId) {
+      batch.update(doc(db, "user_profiles", issue.reportedByUserId, "reported_issues", issue.id), updateData);
     }
+    
+    if (issue.wardId) {
+      batch.update(doc(db, "wards", issue.wardId, "issues_for_ward_officers", issue.id), updateData);
+    }
+
+    const timelineRef = doc(collection(db, "issues_all", issue.id, "timeline"));
+    batch.set(timelineRef, {
+      id: timelineRef.id,
+      issueId: issue.id,
+      timestamp: resolutionTime,
+      eventType: "ResolvedByOfficer",
+      description: "Official uploaded resolution proof.",
+      actorUserId: user?.uid,
+      relatedProofId: proofId
+    });
+
+    batch.commit().then(() => {
+      toast({
+        title: "Proof Uploaded",
+        description: "Task resolved.",
+      });
+    }).catch(async (serverError) => {
+      const permissionError = new FirestorePermissionError({
+        path: `/issues_all/${issue.id}`,
+        operation: 'update',
+        requestResourceData: updateData,
+      });
+      errorEmitter.emit('permission-error', permissionError);
+    });
   };
 
   const onPhotoChange = async (e: React.ChangeEvent<HTMLInputElement>, issue: any) => {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        toast({ title: "File too large", description: "Please upload an image smaller than 10MB.", variant: "destructive" });
+        toast({ title: "File too large", description: "Max 10MB.", variant: "destructive" });
         return;
       }
 
@@ -128,13 +123,11 @@ export default function OfficialDashboard() {
         const rawDataUri = reader.result as string;
         try {
           const compressed = await compressImage(rawDataUri);
-          await handleResolve(issue, compressed);
+          handleResolve(issue, compressed);
         } catch (err) {
-          console.error("Processing error:", err);
-          toast({ title: "Processing Failed", description: "Could not process resolution proof.", variant: "destructive" });
+          toast({ title: "Processing Failed", description: "Could not process proof.", variant: "destructive" });
         } finally {
           setIsProcessing(false);
-          setSelectedIssueId(null);
         }
       };
       reader.readAsDataURL(file);
@@ -148,14 +141,14 @@ export default function OfficialDashboard() {
         <header className="mb-10 flex justify-between items-center">
           <div>
             <h1 className="text-4xl font-headline font-bold text-primary">Officer Workspace</h1>
-            <p className="text-muted-foreground">Madurai Corporation Official Panel. Evidence-based accountability active.</p>
+            <p className="text-muted-foreground">Evidence-based accountability Engine.</p>
           </div>
         </header>
 
         {isLoading || !user ? (
           <div className="flex flex-col items-center justify-center py-40 gap-4">
             <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
-            <p className="text-sm font-medium text-muted-foreground animate-pulse">Initializing Secure Workspace...</p>
+            <p className="text-sm font-medium text-muted-foreground animate-pulse">Initializing Workspace...</p>
           </div>
         ) : (
           <Tabs defaultValue="tasks" className="space-y-8">
@@ -192,16 +185,12 @@ export default function OfficialDashboard() {
                   <CardContent className="p-6 flex items-center gap-4">
                     <div className="p-3 bg-green-100 text-green-600 rounded-2xl"><CheckCircle className="h-6 w-6" /></div>
                     <div>
-                      <p className="text-sm text-muted-foreground font-bold uppercase">Verified Success</p>
-                      <h3 className="text-2xl font-bold">92% Rate</h3>
+                      <p className="text-sm text-muted-foreground font-bold uppercase">Success Rate</p>
+                      <h3 className="text-2xl font-bold">94%</h3>
                     </div>
                   </CardContent>
                 </Card>
               </div>
-
-              <h2 className="text-2xl font-headline font-bold mb-6 flex items-center gap-2">
-                <ShieldCheck className="text-primary h-6 w-6" /> Assigned Assignments
-              </h2>
 
               {issues?.map(issue => (
                 <Card key={issue.id} className="border-none shadow-xl mb-6 overflow-hidden">
@@ -228,13 +217,10 @@ export default function OfficialDashboard() {
                          {issue.status === 'ResolvedByOfficer' || issue.status === 'Closed' ? (
                            <div className="text-center">
                              <CheckCircle className="h-10 w-10 text-green-600 mx-auto mb-2" />
-                             <p className="font-bold text-green-700">Proof Submitted</p>
+                             <p className="font-bold text-green-700">Resolved</p>
                              <div className="mt-4 relative h-32 w-48 rounded-lg overflow-hidden border">
                                 <Image src={issue.afterImage || `https://picsum.photos/seed/${issue.id}-after/400/300`} alt="Resolution" fill className="object-cover" />
                              </div>
-                             <Button variant="outline" size="sm" className="mt-4" asChild>
-                                <a href={`/issues/${issue.id}`}>View Timeline</a>
-                             </Button>
                            </div>
                          ) : (
                            <>
@@ -251,10 +237,10 @@ export default function OfficialDashboard() {
                                onClick={() => fileInputRef.current?.click()}
                              >
                                {isProcessing ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
-                               Upload Resolution Proof
+                               Capture Proof
                              </Button>
                              <p className="text-[10px] text-center text-muted-foreground">
-                               GPS, Timestamp & EXIF data captured automatically. Max 10MB.
+                               Evidence Capture Loop Active.
                              </p>
                            </>
                          )}
@@ -271,24 +257,6 @@ export default function OfficialDashboard() {
                   <>
                     <StatusDistributionChart data={stats.statusStats} />
                     <AgeDistributionChart data={stats.ageStats} />
-                    <Card className="md:col-span-2 border-none shadow-lg">
-                      <CardHeader>
-                          <CardTitle>Department Comparison</CardTitle>
-                          <CardDescription>My Ward performance vs City Benchmarks</CardDescription>
-                      </CardHeader>
-                      <CardContent className="h-[300px]">
-                          <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={stats.deptStats}>
-                                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                  <XAxis dataKey="name" fontSize={10}/>
-                                  <YAxis />
-                                  <Tooltip />
-                                  <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                                  <Bar dataKey="slaBreachCount" fill="hsl(var(--destructive))" radius={[4, 4, 0, 0]} />
-                              </BarChart>
-                          </ResponsiveContainer>
-                      </CardContent>
-                    </Card>
                   </>
                 )}
               </div>

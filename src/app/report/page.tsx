@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useRef, useEffect } from "react";
@@ -13,16 +12,13 @@ import { Camera, Mic, MapPin, Send, Loader2, CheckCircle2, X, Music } from "luci
 import { WARDS, CATEGORIES, SLA_DEADLINES } from "@/lib/constants";
 import { automatedIssueCategorization } from "@/ai/flows/automated-issue-categorization";
 import { useToast } from "@/hooks/use-toast";
-import { useFirestore, useUser } from "@/firebase";
-import { collection, doc, writeBatch } from "firebase/firestore";
+import { useFirestore, useUser, errorEmitter } from "@/firebase";
+import { FirestorePermissionError } from "@/firebase/errors";
+import { collection, doc, writeBatch, getDoc, setDoc } from "firebase/firestore";
 import { addHours } from "date-fns";
 import Image from "next/image";
 
-/**
- * Utility to compress a base64 image string to ensure it fits within Firestore's 1MB limit.
- * Supports up to 10MB input files.
- */
-const compressImage = (dataUri: string, maxWidth: number = 1000, quality: number = 0.6): Promise<string> => {
+const compressImage = (dataUri: string, maxWidth: number = 800, quality: number = 0.7): Promise<string> => {
   return new Promise((resolve, reject) => {
     const img = new window.Image();
     img.onload = () => {
@@ -33,11 +29,7 @@ const compressImage = (dataUri: string, maxWidth: number = 1000, quality: number
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        // Using JPEG format to significantly reduce size.
-        // Even for very large 10MB files, 1000px at 0.6 quality is typically < 300KB.
         const result = canvas.toDataURL('image/jpeg', quality);
-        
-        // Final safety check: if still somehow > 1MB (unlikely for these params), compress more.
         if (result.length > 1000000) {
           resolve(compressImage(dataUri, maxWidth * 0.7, quality * 0.7));
         } else {
@@ -67,7 +59,6 @@ export default function ReportPage() {
   const [ward, setWard] = useState("");
   const [category, setCategory] = useState("");
   
-  // Photo & Voice States
   const [photoDataUri, setPhotoDataUri] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,7 +74,6 @@ export default function ReportPage() {
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Support up to 10MB
       if (file.size > 10 * 1024 * 1024) {
         toast({ title: "File too large", description: "Please upload an image smaller than 10MB.", variant: "destructive" });
         return;
@@ -97,8 +87,7 @@ export default function ReportPage() {
           const compressed = await compressImage(rawDataUri);
           setPhotoDataUri(compressed);
         } catch (err) {
-          console.error("Compression error:", err);
-          toast({ title: "Processing Error", description: "Failed to process the image. Please try a different one.", variant: "destructive" });
+          toast({ title: "Processing Error", description: "Failed to process the image.", variant: "destructive" });
         } finally {
           setLoading(false);
         }
@@ -110,12 +99,11 @@ export default function ReportPage() {
   const handleVoiceMessageClick = () => {
     if (isRecording) {
       setIsRecording(false);
-      // Simulate transcription
-      setDescription((prev) => prev + (prev ? " " : "") + "[Voice Transcript: Large garbage overflow detected near the main junction. Immediate cleanup needed.]");
-      toast({ title: "Transcription Complete", description: "Your voice message has been converted to text." });
+      setDescription((prev) => prev + (prev ? " " : "") + "[Voice Transcript: Emergency sanitation cleanup requested at the landmark location.]");
+      toast({ title: "Transcription Complete", description: "Voice converted to text." });
     } else {
       setIsRecording(true);
-      toast({ title: "Recording...", description: "Speak clearly. Click again to stop and transcribe." });
+      toast({ title: "Recording...", description: "Speak clearly." });
     }
   };
 
@@ -128,7 +116,7 @@ export default function ReportPage() {
     setLoading(true);
     try {
       const result = await automatedIssueCategorization({
-        issueDescription: description || "Analyzing uploaded photo...",
+        issueDescription: description || "Analyzing image evidence...",
         locationDescription: location,
         imageDataUri: photoDataUri || undefined
       });
@@ -139,10 +127,10 @@ export default function ReportPage() {
 
       toast({ 
         title: "AI Analysis Complete", 
-        description: `Categorized as ${result.issueCategory} in ${result.wardName}` 
+        description: `Mapped to ${result.issueCategory}` 
       });
     } catch (err) {
-      toast({ title: "AI Error", description: "Failed to auto-categorize. Please select manually.", variant: "destructive" });
+      toast({ title: "AI Error", description: "Manual selection required.", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -151,70 +139,80 @@ export default function ReportPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      toast({ title: "Auth Required", description: "Please login to report issues.", variant: "destructive" });
+      toast({ title: "Auth Required", description: "Please login.", variant: "destructive" });
       return;
     }
 
     setLoading(true);
-    try {
-      const batch = writeBatch(db);
-      const issueId = `MDU-${Math.floor(1000 + Math.random() * 9000)}`;
-      const now = new Date();
-      const deadlineHours = SLA_DEADLINES[category] || 72;
-      const deadline = addHours(now, deadlineHours);
 
-      const issueData = {
-        id: issueId,
-        title: description.substring(0, 50) + (description.length > 50 ? "..." : ""),
-        description,
-        reportedByUserId: user.uid,
-        wardId: ward,
-        issueCategoryId: category,
-        reportedAt: now.toISOString(),
-        gpsCoordinates: "10.7904,78.7047", 
-        status: "Created",
-        calculatedDisplayStatus: "Yellow",
-        isSlaBreached: false,
-        resolutionDeadline: deadline.toISOString(),
-        reopenCount: 0,
-        supportCount: 0,
-        isGovernanceIntegrityRisk: false,
-        isOfflineReport: false,
-        language: "en",
-        autoDetectedWard: false,
-        beforeImage: photoDataUri || `https://picsum.photos/seed/${issueId}/800/600`,
-        hasExifData: !!photoDataUri,
-      };
+    const issueId = `MDU-${Math.floor(1000 + Math.random() * 9000)}`;
+    const now = new Date();
+    const deadlineHours = SLA_DEADLINES[category] || 72;
+    const deadline = addHours(now, deadlineHours);
 
-      const masterRef = doc(db, "issues_all", issueId);
-      batch.set(masterRef, issueData);
+    const issueData = {
+      id: issueId,
+      title: description.substring(0, 50) + (description.length > 50 ? "..." : ""),
+      description,
+      reportedByUserId: user.uid,
+      wardId: ward,
+      issueCategoryId: category,
+      reportedAt: now.toISOString(),
+      gpsCoordinates: "10.7904,78.7047", 
+      status: "Created",
+      calculatedDisplayStatus: "Yellow",
+      isSlaBreached: false,
+      resolutionDeadline: deadline.toISOString(),
+      reopenCount: 0,
+      supportCount: 0,
+      isGovernanceIntegrityRisk: false,
+      isOfflineReport: false,
+      language: "en",
+      autoDetectedWard: false,
+      beforeImage: photoDataUri || `https://picsum.photos/seed/${issueId}/800/600`,
+      hasExifData: !!photoDataUri,
+    };
 
-      const citizenRef = doc(db, "user_profiles", user.uid, "reported_issues", issueId);
-      batch.set(citizenRef, issueData);
+    // DBAC: Ensure user profile exists for rules to work correctly
+    const profileRef = doc(db, "user_profiles", user.uid);
+    const profileSnap = await getDoc(profileRef);
+    if (!profileSnap.exists()) {
+      await setDoc(profileRef, {
+        id: user.uid,
+        email: user.email || "",
+        role: "Citizen",
+        wardIds: []
+      }).catch(() => { /* Silent fail if already handled */ });
+    }
 
-      const wardRef = doc(db, "wards", ward, "issues_for_ward_officers", issueId);
-      batch.set(wardRef, issueData);
+    const batch = writeBatch(db);
+    batch.set(doc(db, "issues_all", issueId), issueData);
+    batch.set(doc(db, "user_profiles", user.uid, "reported_issues", issueId), issueData);
+    batch.set(doc(db, "wards", ward, "issues_for_ward_officers", issueId), issueData);
+    
+    const timelineRef = doc(collection(db, "issues_all", issueId, "timeline"));
+    batch.set(timelineRef, {
+      id: timelineRef.id,
+      issueId,
+      timestamp: now.toISOString(),
+      eventType: "Created",
+      description: "Issue successfully recorded in the governance ledger.",
+      actorUserId: user.uid
+    });
 
-      const timelineRef = doc(collection(db, "issues_all", issueId, "timeline"));
-      batch.set(timelineRef, {
-        id: timelineRef.id,
-        issueId,
-        timestamp: now.toISOString(),
-        eventType: "Created",
-        description: "Issue successfully reported and recorded in the governance ledger.",
-        actorUserId: user.uid
-      });
-
-      await batch.commit();
-      
+    batch.commit().then(() => {
       setTicketId(issueId);
       setSubmitted(true);
-    } catch (err: any) {
-      console.error(err);
-      toast({ title: "Submission Failed", description: err.message, variant: "destructive" });
-    } finally {
       setLoading(false);
-    }
+    }).catch(async (serverError) => {
+      setLoading(false);
+      const permissionError = new FirestorePermissionError({
+        path: `/issues_all/${issueId}`,
+        operation: 'write',
+        requestResourceData: issueData,
+      });
+      errorEmitter.emit('permission-error', permissionError);
+    });
   };
 
   if (!isMounted) {
@@ -238,7 +236,7 @@ export default function ReportPage() {
           </div>
           <h1 className="text-3xl font-headline font-bold mb-4">Issue Reported Successfully</h1>
           <p className="text-muted-foreground mb-8 max-w-md">
-            Your ticket <strong>#{ticketId}</strong> has been created. An acknowledgement has been sent via SMS. You can track status in your dashboard.
+            Your ticket <strong>#{ticketId}</strong> has been created. Track its progress in your dashboard.
           </p>
           <div className="flex gap-4">
             <Button asChild><a href="/">Back Home</a></Button>
@@ -256,14 +254,14 @@ export default function ReportPage() {
         <div className="max-w-3xl mx-auto">
           <header className="mb-10">
             <h1 className="text-4xl font-headline font-bold text-primary mb-2">Report Civic Issue</h1>
-            <p className="text-muted-foreground">Submit your grievance to Madurai Corporation. AI will auto-route it to the correct department.</p>
+            <p className="text-muted-foreground">Submit your grievance to Madurai Corporation. Accountability Engine active.</p>
           </header>
 
           <form onSubmit={handleSubmit} className="space-y-8">
             <Card className="border-none shadow-lg">
               <CardHeader>
                 <CardTitle>Issue Evidence</CardTitle>
-                <CardDescription>Attach visual or audio proof (Max 10MB).</CardDescription>
+                <CardDescription>Attach photo or voice proof (Max 10MB).</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -283,14 +281,14 @@ export default function ReportPage() {
                   >
                     {photoDataUri ? (
                       <>
-                        <Image src={photoDataUri} alt="Preview" fill className="object-cover opacity-20 group-hover:opacity-40 transition-opacity" />
+                        <Image src={photoDataUri} alt="Preview" fill className="object-cover opacity-20" />
                         <CheckCircle2 className="h-6 w-6 text-green-600 z-10" />
-                        <span className="z-10 font-bold">Photo Attached</span>
+                        <span className="z-10 font-bold">Photo Captured</span>
                       </>
                     ) : (
                       <>
                         {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : <Camera className="h-6 w-6" />}
-                        <span>Upload Photo</span>
+                        <span>Capture Photo</span>
                       </>
                     )}
                   </Button>
@@ -304,36 +302,22 @@ export default function ReportPage() {
                     {isRecording ? (
                       <>
                         <Music className="h-6 w-6" />
-                        <span>Stop Recording</span>
+                        <span>Transcribing...</span>
                       </>
                     ) : (
                       <>
                         <Mic className="h-6 w-6" />
-                        <span>Voice Message</span>
+                        <span>Voice Report</span>
                       </>
                     )}
                   </Button>
                 </div>
 
-                {photoDataUri && (
-                  <div className="relative aspect-video rounded-xl overflow-hidden border">
-                    <Image src={photoDataUri} alt="Preview" fill className="object-cover" />
-                    <Button 
-                      size="icon" 
-                      variant="destructive" 
-                      className="absolute top-2 right-2 rounded-full h-8 w-8"
-                      onClick={() => setPhotoDataUri(null)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                )}
-
                 <div className="space-y-2">
                   <Label htmlFor="description">Detailed Description</Label>
                   <Textarea 
                     id="description" 
-                    placeholder="e.g. Large pothole near Arulmigu Meenakshi Amman Temple east gate..." 
+                    placeholder="Describe the issue clearly..." 
                     className="min-h-[120px] rounded-xl"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
@@ -350,7 +334,7 @@ export default function ReportPage() {
                     disabled={loading || (!description && !photoDataUri)}
                   >
                     {loading ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : null}
-                    Auto-Fill using AI
+                    AI Auto-Fill
                   </Button>
                 </div>
               </CardContent>
@@ -358,23 +342,9 @@ export default function ReportPage() {
 
             <Card className="border-none shadow-lg">
               <CardHeader>
-                <CardTitle>Location & Classification</CardTitle>
+                <CardTitle>Classification</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="space-y-2">
-                  <Label htmlFor="location">Landmark / Location Description</Label>
-                  <div className="relative">
-                    <Input 
-                      id="location" 
-                      placeholder="Street name, landmark..." 
-                      className="rounded-xl pr-10"
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
-                    />
-                    <MapPin className="absolute right-3 top-3 h-4 w-4 text-muted-foreground" />
-                  </div>
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <Label htmlFor="ward">Ward</Label>
@@ -408,12 +378,12 @@ export default function ReportPage() {
             </Card>
 
             <div className="flex items-center justify-between pt-4">
-              <p className="text-xs text-muted-foreground max-w-sm">
-                By submitting, you agree to the Madurai Civic Governance terms of service. Spam reporting is a punishable offence.
+              <p className="text-[10px] text-muted-foreground max-w-sm uppercase tracking-widest">
+                Government-grade evidence-based reporting.
               </p>
-              <Button type="submit" size="lg" className="rounded-xl px-12 h-14 text-lg" disabled={loading}>
+              <Button type="submit" size="lg" className="rounded-xl px-12 h-14 text-lg" disabled={loading || !ward || !category}>
                 {loading ? <Loader2 className="animate-spin mr-2 h-5 w-5" /> : <Send className="mr-2 h-5 w-5" />}
-                Submit Report
+                Report Now
               </Button>
             </div>
           </form>

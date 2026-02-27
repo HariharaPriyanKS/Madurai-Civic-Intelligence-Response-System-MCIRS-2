@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo } from "react";
@@ -12,7 +11,8 @@ import { calculateSeriousnessScore, getPriorityTag } from "@/lib/priority-logic"
 import { AlertCircle, History, Image as ImageIcon, MapPin, RefreshCcw, CheckCircle2, ThumbsUp, Users, TrendingUp, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
-import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { useUser, useFirestore, useCollection, useMemoFirebase, errorEmitter } from "@/firebase";
+import { FirestorePermissionError } from "@/firebase/errors";
 import { collection, doc, writeBatch, increment } from "firebase/firestore";
 
 export default function CitizenDashboard() {
@@ -26,41 +26,42 @@ export default function CitizenDashboard() {
 
   const { data: issues, isLoading } = useCollection(issuesRef);
 
-  const handleSupport = async (issue: any) => {
+  const handleSupport = (issue: any) => {
     if (!user) {
-      toast({ title: "Authentication Required", description: "Please login to support civic issues.", variant: "destructive" });
+      toast({ title: "Authentication Required", description: "Please login.", variant: "destructive" });
       return;
     }
     
-    try {
-      const batch = writeBatch(db);
-      const masterRef = doc(db, "issues_all", issue.id);
-      
-      // Update all denormalized locations for CSWPS integrity
-      batch.update(masterRef, { supportCount: increment(1) });
-      
-      const citizenRef = doc(db, "user_profiles", issue.reportedByUserId, "reported_issues", issue.id);
-      batch.update(citizenRef, { supportCount: increment(1) });
-      
-      const wardRef = doc(db, "wards", issue.wardId, "issues_for_ward_officers", issue.id);
-      batch.update(wardRef, { supportCount: increment(1) });
+    const batch = writeBatch(db);
+    const masterRef = doc(db, "issues_all", issue.id);
+    batch.update(masterRef, { supportCount: increment(1) });
+    
+    const citizenRef = doc(db, "user_profiles", issue.reportedByUserId, "reported_issues", issue.id);
+    batch.update(citizenRef, { supportCount: increment(1) });
+    
+    const wardRef = doc(db, "wards", issue.wardId, "issues_for_ward_officers", issue.id);
+    batch.update(wardRef, { supportCount: increment(1) });
 
-      // Add timeline entry
-      const timelineRef = doc(collection(db, "issues_all", issue.id, "timeline"));
-      batch.set(timelineRef, {
-        id: timelineRef.id,
-        issueId: issue.id,
-        timestamp: new Date().toISOString(),
-        eventType: "SupportAdded",
-        description: "A citizen supported this issue, increasing its priority.",
-        actorUserId: user.uid
+    const timelineRef = doc(collection(db, "issues_all", issue.id, "timeline"));
+    batch.set(timelineRef, {
+      id: timelineRef.id,
+      issueId: issue.id,
+      timestamp: new Date().toISOString(),
+      eventType: "SupportAdded",
+      description: "A citizen supported this issue.",
+      actorUserId: user.uid
+    });
+
+    batch.commit().then(() => {
+      toast({ title: "Issue Supported", description: "Impact increased." });
+    }).catch(async (serverError) => {
+      const permissionError = new FirestorePermissionError({
+        path: masterRef.path,
+        operation: 'update',
+        requestResourceData: { supportCount: 'increment' },
       });
-
-      await batch.commit();
-      toast({ title: "Issue Supported", description: "Your support has increased the seriousness score of this issue." });
-    } catch (err: any) {
-      toast({ title: "Action Failed", description: err.message, variant: "destructive" });
-    }
+      errorEmitter.emit('permission-error', permissionError);
+    });
   };
 
   const sortedIssues = useMemo(() => {
@@ -91,7 +92,7 @@ export default function CitizenDashboard() {
         <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-4xl font-headline font-bold text-primary">Community Board</h1>
-            <p className="text-muted-foreground">Democratic issue prioritization. Support issues to increase their resolution priority.</p>
+            <p className="text-muted-foreground">Impact-driven governance dashboard.</p>
           </div>
           <Button size="lg" className="rounded-xl shadow-lg" asChild>
             <a href="/report">Report New Issue</a>
@@ -160,7 +161,7 @@ export default function CitizenDashboard() {
                     {isGovernanceIntegrityRisk(issue.reopenCount || 0) && (
                       <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
                         <AlertCircle className="h-5 w-5" />
-                        <span className="text-sm font-bold">⚠ Governance Integrity Risk: Priority Escalated.</span>
+                        <span className="text-sm font-bold">⚠ Governance Risk Escalated.</span>
                       </div>
                     )}
 

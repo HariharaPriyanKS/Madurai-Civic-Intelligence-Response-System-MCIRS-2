@@ -7,26 +7,7 @@ service cloud.firestore {
      * 
      * CORE PHILOSOPHY:
      * This ruleset enforces a strict "Evidence-Based Accountability" model. Access is governed 
-     * by identity and geographical scope. The system transitions from a basic complaint 
-     * manager to a government-grade audit infrastructure where state changes (like issue closure) 
-     * are logically coupled with verifiable proof.
-     * 
-     * DATA STRUCTURE:
-     * - Global Configuration: /wards, /issue_categories (Read-only for public).
-     * - Master Records: /issues_all (Complete city-wide view for high-level officials).
-     * - Role-Scoped Views: Denormalized paths (/user_profiles/{userId}/reported_issues, etc.) 
-     *   enable high-performance, secure list operations without complex rule filtering.
-     * - Audit/Evidence: Subcollections under issues (/proofs, /audit_logs) ensure 
-     *   authorization context is preserved alongside the data.
-     * 
-     * KEY SECURITY DECISIONS:
-     * 1. Immutability: Audit logs and verified proofs are immutable. Deletion is restricted to Admin roles.
-     * 2. DBAC (Database-Backed Access Control): Roles and Ward assignments are stored in 
-     *    user profiles, which are fetched to validate cross-collection access.
-     * 3. Relational Integrity: On creation, we enforce that the 'reportedBy' or 'assignedTo' 
-     *    IDs in the document match the authenticated user, preventing identity spoofing.
-     * 4. Structural Segregation: By segregating issues into user-specific paths, we 
-     *    eliminate the risk of accidental data leakage during list operations.
+     * by identity and geographical scope.
      */
 
     // --- HELPER FUNCTIONS ---
@@ -39,95 +20,57 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Used for updates/deletes to ensure document exists and belongs to the user
     function isExistingOwner(userId) {
       return resource != null && isOwner(userId);
     }
 
-    // Checks if the user has an explicit Admin marker document
     function isAdmin() {
       return exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
-    // Fetches the user's profile to check for specific administrative roles or scopes
-    function getUserProfile() {
-      return get(/databases/$(database)/documents/user_profiles/$(request.auth.uid)).data;
+    function getUserProfileData() {
+      let path = /databases/$(database)/documents/user_profiles/$(request.auth.uid);
+      return exists(path) ? get(path).data : null;
     }
 
     function hasGlobalRole(roleName) {
-      return isSignedIn() && getUserProfile().role == roleName;
+      let data = getUserProfileData();
+      return isSignedIn() && data != null && data.role == roleName;
     }
 
-    // High-level authorities with city-wide read access
     function isHighAuthority() {
       return isAdmin() || hasGlobalRole('Commissioner') || hasGlobalRole('Collector');
     }
 
-    // Checks if a Ward Officer is assigned to a specific ward ID
     function isOfficerForWard(wardId) {
-      return isSignedIn() && wardId in getUserProfile().wardIds;
+      let data = getUserProfileData();
+      return isSignedIn() && data != null && data.wardIds != null && wardId in data.wardIds;
     }
 
     // --- COLLECTION RULES ---
 
-    /**
-     * @description Profiles containing roles and ward assignments.
-     * @path /user_profiles/{userId}
-     * @allow get: if isOwner(userId) || isHighAuthority();
-     * @deny update: if request.resource.data.role != resource.data.role (Non-admins changing roles).
-     * @principle Self-creation for profiles; role-based access for oversight.
-     */
     match /user_profiles/{userId} {
       allow get: if isOwner(userId) || isHighAuthority();
       allow list: if isHighAuthority();
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId) && request.resource.data.role == resource.data.role;
+      allow update: if isOwner(userId) && (request.resource.data.role == resource.data.role || isAdmin());
       allow delete: if isAdmin();
     }
 
-    /**
-     * @description System admin markers.
-     * @path /roles_admin/{userId}
-     * @allow read: if isAdmin();
-     * @deny write: if !isAdmin();
-     * @principle Dedicated collection for root-level privilege escalation control.
-     */
     match /roles_admin/{userId} {
       allow read, write: if isAdmin();
     }
 
-    /**
-     * @description Ward configuration data.
-     * @path /wards/{wardId}
-     * @allow get, list: if isSignedIn();
-     * @deny create, update, delete: if !isAdmin();
-     * @principle Read-only reference data for all authenticated users.
-     */
     match /wards/{wardId} {
       allow get, list: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    /**
-     * @description Issue categories and escalation chains.
-     * @path /issue_categories/{categoryId}
-     * @allow get, list: if isSignedIn();
-     * @deny write: if !isAdmin();
-     * @principle Read-only reference data for all authenticated users.
-     */
     match /issue_categories/{categoryId} {
       allow get, list: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    /**
-     * @description Master issue collection for city-wide oversight.
-     * @path /issues_all/{issueId}
-     * @allow get: if isSignedIn();
-     * @allow list: if isSignedIn(); // Updated to allow authenticated public listing for the portal
-     * @deny create, update: if !isSignedIn();
-     * @principle Centralized repository with public-facing aggregate potential.
-     */
     match /issues_all/{issueId} {
       allow get: if isSignedIn();
       allow list: if isSignedIn();
@@ -135,17 +78,11 @@ service cloud.firestore {
       allow update: if isSignedIn() && (
         resource.data.reportedByUserId == request.auth.uid || 
         resource.data.assignedToUserId == request.auth.uid || 
-        isHighAuthority()
+        isHighAuthority() ||
+        isOfficerForWard(resource.data.wardId)
       );
       allow delete: if isAdmin();
 
-      /**
-       * @description Proof attachments (photos/EXIF) for specific issues.
-       * @path /issues_all/{issueId}/proofs/{proofId}
-       * @allow create: if request.resource.data.uploadedByUserId == request.auth.uid;
-       * @deny delete: if !isAdmin();
-       * @principle Proofs are immutable evidence; strictly controlled deletion.
-       */
       match /proofs/{proofId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.resource.data.uploadedByUserId == request.auth.uid;
@@ -153,84 +90,44 @@ service cloud.firestore {
         allow delete: if isAdmin();
       }
 
-      /**
-       * @description Chronological events for an issue's lifecycle.
-       * @path /issues_all/{issueId}/timeline/{timelineEntryId}
-       * @allow create: if request.resource.data.actorUserId == request.auth.uid;
-       * @deny update, delete: if true;
-       * @principle Timelines are append-only to preserve history.
-       */
       match /timeline/{timelineEntryId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() && request.resource.data.actorUserId == request.auth.uid;
         allow update, delete: if false;
       }
 
-      /**
-       * @description Per-issue audit logs for governance integrity.
-       * @path /issues_all/{issueId}/audit_logs/{logId}
-       * @allow get: if isHighAuthority() || resource.data.userId == request.auth.uid;
-       * @deny write: if !isAdmin();
-       * @principle Immutable audit trail for accountability.
-       */
       match /audit_logs/{logId} {
         allow get, list: if isSignedIn();
-        allow create: if isSignedIn(); // System/Clients create logs, but can't edit
+        allow create: if isSignedIn();
         allow update, delete: if false;
       }
     }
 
-    /**
-     * @description System-wide audit logs.
-     * @path /system_audit_logs/{logId}
-     * @allow read: if isHighAuthority();
-     * @deny delete: if true;
-     * @principle Top-level visibility for system health and risk analytics.
-     */
     match /system_audit_logs/{logId} {
       allow read: if isHighAuthority();
       allow create: if isSignedIn();
       allow update, delete: if false;
     }
 
-    /**
-     * @description Denormalized view of issues reported by a citizen.
-     * @path /user_profiles/{userId}/reported_issues/{issueId}
-     * @allow list: if isOwner(userId);
-     * @deny create: if request.resource.data.reportedByUserId != userId;
-     * @principle Ownership-based structural segregation for citizens.
-     */
     match /user_profiles/{userId}/reported_issues/{issueId} {
       allow get, list: if isOwner(userId) || isHighAuthority();
       allow create: if isOwner(userId) && request.resource.data.reportedByUserId == userId;
-      allow update: if isExistingOwner(userId) || isHighAuthority();
+      allow update: if isExistingOwner(userId) || isHighAuthority() || (isSignedIn() && request.auth.uid == resource.data.assignedToUserId);
       allow delete: if isAdmin();
     }
 
-    /**
-     * @description Denormalized view of issues assigned to an official.
-     * @path /user_profiles/{userId}/assigned_issues/{issueId}
-     * @allow list: if isOwner(userId);
-     * @deny update: if resource.data.assignedToUserId != userId;
-     * @principle Official-scoped task management with assignment validation.
-     */
     match /user_profiles/{userId}/assigned_issues/{issueId} {
       allow get, list: if isOwner(userId) || isHighAuthority();
-      allow create: if isHighAuthority();
+      allow create: if isHighAuthority() || isAdmin();
       allow update: if isExistingOwner(userId) || isHighAuthority();
       allow delete: if isAdmin();
     }
 
-    /**
-     * @description Ward-scoped issue view for Ward Officers.
-     * @path /wards/{wardId}/issues_for_ward_officers/{issueId}
-     * @allow list: if isOfficerForWard(wardId);
-     * @deny read: if !isOfficerForWard(wardId) && !isHighAuthority();
-     * @principle Jurisdiction-based access control for ward management.
-     */
     match /wards/{wardId}/issues_for_ward_officers/{issueId} {
       allow get, list: if isOfficerForWard(wardId) || isHighAuthority();
-      allow create, update: if isOfficerForWard(wardId) || isHighAuthority();
+      // Allow reporter to create the denormalized entry for officers to see
+      allow create: if isSignedIn() && request.resource.data.reportedByUserId == request.auth.uid;
+      allow update: if isOfficerForWard(wardId) || isHighAuthority() || isAdmin();
       allow delete: if isAdmin();
     }
   }
