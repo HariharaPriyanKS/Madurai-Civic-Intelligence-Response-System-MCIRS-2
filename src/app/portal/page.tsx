@@ -8,23 +8,51 @@ import { Progress } from "@/components/ui/progress";
 import { WARDS } from "@/lib/constants";
 import { Trophy, ArrowUp, ArrowDown, Activity, CheckCircle, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 
 export default function PublicPortal() {
   const [search, setSearch] = useState("");
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [isMounted, setIsMounted] = useState(false);
 
-  const leaderboard = WARDS.map(w => ({
-    ...w,
-    score: Math.floor(Math.random() * 30) + 70,
-    resolved: Math.floor(Math.random() * 200) + 300,
-    compliance: Math.floor(Math.random() * 15) + 80,
-    trend: Math.random() > 0.5 ? 'up' : 'down'
-  })).sort((a, b) => b.score - a.score);
+  useEffect(() => {
+    setIsMounted(true);
+    const data = WARDS.map(w => ({
+      ...w,
+      score: Math.floor(Math.random() * 30) + 70,
+      resolved: Math.floor(Math.random() * 200) + 300,
+      compliance: Math.floor(Math.random() * 15) + 80,
+      trend: Math.random() > 0.5 ? 'up' : 'down'
+    })).sort((a, b) => b.score - a.score);
+    setLeaderboard(data);
+  }, []);
 
-  const filtered = leaderboard.filter(w => 
-    w.name.toLowerCase().includes(search.toLowerCase()) || 
-    w.id.toString().includes(search)
-  );
+  const filtered = useMemo(() => {
+    return leaderboard.filter(w => 
+      w.name.toLowerCase().includes(search.toLowerCase()) || 
+      w.id.toString().includes(search)
+    );
+  }, [leaderboard, search]);
+
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container mx-auto px-4 pt-32 pb-12">
+          <div className="animate-pulse space-y-8">
+             <div className="h-12 bg-muted rounded-xl w-2/3 mx-auto mb-4" />
+             <div className="h-4 bg-muted rounded-xl w-1/2 mx-auto" />
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-12">
+                <div className="h-32 bg-muted rounded-xl" />
+                <div className="h-32 bg-muted rounded-xl" />
+                <div className="h-32 bg-muted rounded-xl" />
+             </div>
+             <div className="h-[400px] bg-muted rounded-xl w-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
