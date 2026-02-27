@@ -1,6 +1,7 @@
 import type {Metadata} from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
+import { FirebaseClientProvider } from '@/firebase/client-provider';
 
 export const metadata: Metadata = {
   title: 'MCIRS | Madurai Civic Intelligence & Response System',
@@ -22,7 +23,9 @@ export default function RootLayout({
         <meta name="theme-color" content="#1F66CC" />
       </head>
       <body className="font-body antialiased bg-background text-foreground">
-        {children}
+        <FirebaseClientProvider>
+          {children}
+        </FirebaseClientProvider>
         <Toaster />
       </body>
     </html>
