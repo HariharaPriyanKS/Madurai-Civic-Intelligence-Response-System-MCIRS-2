@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useUser } from "@/firebase";
@@ -12,12 +11,17 @@ import { useEffect, useState } from "react";
 export default function DashboardRouter() {
   const { user, isUserLoading } = useUser();
   const [role, setRole] = useState<string | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Advanced role detection for prototype hardening
   useEffect(() => {
     if (user) {
       const email = user.email?.toLowerCase() || "";
-      if (email.includes('official') || email.includes('officer') || user.isAnonymous === false && email === "") {
+      if (email.includes('official') || email.includes('officer') || (user.isAnonymous === false && email === "")) {
         setRole('Official');
       } else if (email.includes('admin') || email.includes('commissioner') || email.includes('collector')) {
         setRole('Authority');
@@ -27,7 +31,7 @@ export default function DashboardRouter() {
     }
   }, [user]);
 
-  if (isUserLoading) {
+  if (!isMounted || isUserLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">

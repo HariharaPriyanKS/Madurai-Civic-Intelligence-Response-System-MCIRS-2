@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +25,7 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [ticketId, setTicketId] = useState("");
+  const [isMounted, setIsMounted] = useState(false);
   
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
@@ -36,6 +36,10 @@ export default function ReportPage() {
   const [photoDataUri, setPhotoDataUri] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const handlePhotoUploadClick = () => {
     fileInputRef.current?.click();
@@ -165,6 +169,17 @@ export default function ReportPage() {
       setLoading(false);
     }
   };
+
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container mx-auto px-4 pt-32 flex flex-col items-center justify-center">
+          <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+        </div>
+      </div>
+    );
+  }
 
   if (submitted) {
     return (

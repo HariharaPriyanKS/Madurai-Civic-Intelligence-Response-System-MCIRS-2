@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { WARDS } from "@/lib/constants";
 import { Trophy, Activity, CheckCircle, Search, TrendingUp, Clock, Loader2, BarChart3 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { useState, useEffect, useMemo } from "react";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
@@ -50,7 +49,8 @@ export default function PublicPortal() {
         resolved,
         total,
         compliance: total > 0 ? Math.floor((resolved / total) * 95) : 0,
-        trend: Math.random() > 0.5 ? 'up' : 'down'
+        // Using a stable identifier for trend to avoid hydration mismatch
+        trend: (w.id % 2 === 0) ? 'up' : 'down'
       };
     }).sort((a, b) => b.score - a.score);
   }, [issues, isMounted]);
@@ -72,7 +72,17 @@ export default function PublicPortal() {
     };
   }, [issues]);
 
-  if (!isMounted) return null;
+  // Prevent hydration mismatch by returning null during SSR and initial client render
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="container mx-auto px-4 pt-32 flex flex-col items-center justify-center">
+          <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
