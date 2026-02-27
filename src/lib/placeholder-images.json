@@ -1,3 +1,22 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "hero-madurai",
+      "description": "Madurai Meenakshi Temple Aerial View",
+      "imageUrl": "https://picsum.photos/seed/madurai/1200/600",
+      "imageHint": "Madurai temple city"
+    },
+    {
+      "id": "pothole",
+      "description": "Road damage in Madurai",
+      "imageUrl": "https://images.unsplash.com/photo-1769935253787-2f7321f7434b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHxwb3Rob2xlJTIwcm9hZHxlbnwwfHx8fDE3NzIyMDExMzV8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "pothole road"
+    },
+    {
+      "id": "waste",
+      "description": "Garbage overflow",
+      "imageUrl": "https://images.unsplash.com/photo-1659998755399-6266e0f0a0d1?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw2fHxnYXJiYWdlJTIwd2FzdGV8ZW58MHx8fHwxNzcyMTg1MzA2fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "garbage waste"
+    }
+  ]
 }
