@@ -26,11 +26,12 @@ export interface AnalyticsFilters {
   department?: string;
 }
 
-export function processAnalytics(issues: any[], filters?: AnalyticsFilters): AnalyticsData {
+export function processAnalytics(issues: any[] | null, filters?: AnalyticsFilters): AnalyticsData {
   const now = new Date();
+  const safeIssues = issues || [];
 
   // Apply Filters
-  const filteredIssues = issues.filter(issue => {
+  const filteredIssues = safeIssues.filter(issue => {
     if (filters?.category && issue.issueCategoryId !== filters.category) return false;
     if (filters?.status && issue.status !== filters.status) return false;
     if (filters?.dateRange) {
@@ -40,7 +41,6 @@ export function processAnalytics(issues: any[], filters?: AnalyticsFilters): Ana
         end: endOfDay(filters.dateRange.to) 
       })) return false;
     }
-    // Department filtering logic (assuming category maps 1:1 to department for now)
     return true;
   });
 
@@ -57,9 +57,10 @@ export function processAnalytics(issues: any[], filters?: AnalyticsFilters): Ana
   }));
 
   filteredIssues.forEach(issue => {
+    if (!issue.wardId) return;
     const stats = wardMap.get(issue.wardId) || { 
       name: issue.wardId, 
-      id: issue.wardId, 
+      id: "Unknown", 
       total: 0, 
       resolved: 0, 
       pending: 0, 
@@ -103,14 +104,14 @@ export function processAnalytics(issues: any[], filters?: AnalyticsFilters): Ana
   filteredIssues.forEach(issue => {
     const stats = deptMap.get(issue.issueCategoryId) || { name: issue.issueCategoryId, total: 0, pending: 0, slaBreachCount: 0 };
     stats.total++;
-    if (issue.status !== 'Closed') stats.pending++;
+    if (issue.status !== 'Closed' && issue.status !== 'ResolvedByOfficer') stats.pending++;
     if (issue.isSlaBreached) stats.slaBreachCount++;
     deptMap.set(issue.issueCategoryId, stats);
   });
 
   const deptStats = Array.from(deptMap.values()).map(d => ({
     ...d,
-    slaBreachRate: d.total > 0 ? (d.slaBreachCount / d.total) * 100 : 0
+    slaBreachRate: d.total > 0 ? Math.round((d.slaBreachCount / d.total) * 100) : 0
   }));
 
   // 4. Age Distribution
@@ -122,7 +123,7 @@ export function processAnalytics(issues: any[], filters?: AnalyticsFilters): Ana
   ];
 
   filteredIssues.forEach(issue => {
-    if (issue.status === 'Closed') return;
+    if (issue.status === 'Closed' || issue.status === 'ResolvedByOfficer') return;
     const hours = differenceInHours(now, new Date(issue.reportedAt));
     if (hours <= 24) ageBuckets[0].count++;
     else if (hours <= 72) ageBuckets[1].count++;

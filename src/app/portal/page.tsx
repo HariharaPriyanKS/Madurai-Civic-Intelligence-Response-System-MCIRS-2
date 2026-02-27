@@ -49,7 +49,7 @@ export default function PublicPortal() {
         resolved,
         total,
         compliance: total > 0 ? Math.floor((resolved / total) * 95) : 0,
-        // Using a stable identifier for trend to avoid hydration mismatch
+        // Stable trend calculation to prevent hydration mismatch
         trend: (w.id % 2 === 0) ? 'up' : 'down'
       };
     }).sort((a, b) => b.score - a.score);
@@ -72,7 +72,6 @@ export default function PublicPortal() {
     };
   }, [issues]);
 
-  // Prevent hydration mismatch by returning null during SSR and initial client render
   if (!isMounted) {
     return (
       <div className="min-h-screen bg-background">

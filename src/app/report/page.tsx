@@ -147,6 +147,7 @@ export default function ReportPage() {
 
     const issueId = `MDU-${Math.floor(1000 + Math.random() * 9000)}`;
     const now = new Date();
+    // Dynamic SLA calculation based on official category constants
     const deadlineHours = SLA_DEADLINES[category] || 72;
     const deadline = addHours(now, deadlineHours);
 
@@ -173,7 +174,7 @@ export default function ReportPage() {
       hasExifData: !!photoDataUri,
     };
 
-    // DBAC: Ensure user profile exists for rules to work correctly
+    // DBAC Hardening: Ensure user profile exists for rules to work correctly
     const profileRef = doc(db, "user_profiles", user.uid);
     const profileSnap = await getDoc(profileRef);
     if (!profileSnap.exists()) {
@@ -322,6 +323,17 @@ export default function ReportPage() {
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
                     required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="location">Landmark / Location</Label>
+                  <Input 
+                    id="location" 
+                    placeholder="Street name, landmark..." 
+                    className="rounded-xl"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
                   />
                 </div>
 
