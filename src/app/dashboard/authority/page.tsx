@@ -6,151 +6,95 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { calculateDisplayStatus } from "@/lib/issue-logic";
-import { AlertTriangle, TrendingUp, ShieldAlert, BarChart3, FileText } from "lucide-react";
-
-// Mock system-wide oversight data
-const RISK_ISSUES = [
-  {
-    id: "MDU-1103",
-    ward: "Ward 12",
-    officer: "Rajesh K.",
-    reopenCount: 3,
-    status: "InProgress",
-    slaBreached: true
-  },
-  {
-    id: "MDU-4422",
-    ward: "Ward 45",
-    officer: "Senthamizh M.",
-    reopenCount: 4,
-    status: "Reopened",
-    slaBreached: false
-  }
-];
+import { AlertTriangle, TrendingUp, ShieldAlert, BarChart3, FileText, Download, Filter } from "lucide-react";
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { collection } from "firebase/firestore";
+import { processAnalytics } from "@/lib/analytics-logic";
+import { WardComplaintsChart, StatusDistributionChart, AgeDistributionChart } from "@/components/analytics/AnalyticsCharts";
+import { NegligenceAlerts } from "@/components/analytics/NegligenceAlerts";
+import { Button } from "@/components/ui/button";
 
 export default function AuthorityDashboard() {
+  const db = useFirestore();
+  const issuesRef = useMemoFirebase(() => collection(db, "issues_all"), [db]);
+  const { data: issues, isLoading } = useCollection(issuesRef);
+
+  const stats = issues ? processAnalytics(issues) : null;
+
+  const handleExportCSV = () => {
+    if (!issues) return;
+    const headers = "ID,Ward,Category,Status,SLA Breached,Reported At\n";
+    const rows = issues.map(i => `${i.id},${i.wardId},${i.issueCategoryId},${i.status},${i.isSlaBreached},${i.reportedAt}`).join("\n");
+    const blob = new Blob([headers + rows], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `MCIRS_Governance_Report_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-20">
       <Navbar />
-      <div className="container mx-auto px-4 pt-32 pb-12">
+      <div className="container mx-auto px-4 pt-32">
         <header className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
-            <h1 className="text-4xl font-headline font-bold text-primary">Governance Risk Control</h1>
-            <p className="text-muted-foreground">Madurai Commissioner & Collector Oversight Portal.</p>
+            <h1 className="text-4xl font-headline font-bold text-primary">Governance Intelligence</h1>
+            <p className="text-muted-foreground">City-wide performance oversight and administrative risk analysis.</p>
           </div>
           <div className="flex gap-4">
-            <Button variant="outline" className="rounded-xl h-12 gap-2">
-              <FileText className="h-4 w-4" /> Export Audit Log
+            <Button variant="outline" className="rounded-xl h-12 gap-2" onClick={handleExportCSV}>
+              <Download className="h-4 w-4" /> Export CSV
             </Button>
             <Button className="rounded-xl h-12 gap-2">
-              <BarChart3 className="h-4 w-4" /> Analytics Report
+              <Filter className="h-4 w-4" /> Advanced Filters
             </Button>
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-          <Card className="border-none shadow-md bg-red-50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-bold text-red-600 uppercase">Integrity Risks</h3/CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <span className="text-3xl font-bold text-red-700">14</span>
-                <ShieldAlert className="h-8 w-8 text-red-600" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-md bg-orange-50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-bold text-orange-600 uppercase">SLA Breaches</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <span className="text-3xl font-bold text-orange-700">42</span>
-                <AlertTriangle className="h-8 w-8 text-orange-600" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-md">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Compliance Rate</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <span className="text-3xl font-bold">92.4%</span>
-                <TrendingUp className="h-8 w-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-none shadow-md">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-bold text-muted-foreground uppercase">Evidence Rate</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-between">
-                <span className="text-3xl font-bold">100%</span>
-                <Badge className="bg-green-100 text-green-700">Mandatory</Badge>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-pulse">
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-32 bg-muted rounded-xl" />)}
+            <div className="h-96 bg-muted rounded-xl col-span-2" />
+            <div className="h-96 bg-muted rounded-xl" />
+            <div className="h-96 bg-muted rounded-xl" />
+          </div>
+        ) : stats ? (
+          <>
+            <NegligenceAlerts alerts={stats.alerts} />
 
-        <Card className="border-none shadow-2xl overflow-hidden">
-          <CardHeader className="border-b bg-muted/20">
-            <CardTitle>Governance Risk Analytics</CardTitle>
-            <CardDescription>High-frequency reopens and systematic SLA failures.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Ticket ID</TableHead>
-                  <TableHead>Ward</TableHead>
-                  <TableHead>Assigned Officer</TableHead>
-                  <TableHead>Reopens</TableHead>
-                  <TableHead>Current Status</TableHead>
-                  <TableHead className="text-right">Risk Factor</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {RISK_ISSUES.map(issue => (
-                  <TableRow key={issue.id} className="hover:bg-red-50/30">
-                    <TableCell className="font-bold">{issue.id}</TableCell>
-                    <TableCell>{issue.ward}</TableCell>
-                    <TableCell>{issue.officer}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                        {issue.reopenCount} Times
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={calculateDisplayStatus({
-                        internalStatus: issue.status,
-                        isSlaBreached: issue.slaBreached,
-                        reopenCount: issue.reopenCount,
-                        hasProof: false,
-                        isProofVerified: false
-                      })} />
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Badge className="bg-red-900 text-white">High Alert</Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+              <WardComplaintsChart data={stats.wardStats} />
+              <div className="col-span-1 space-y-8">
+                <StatusDistributionChart data={stats.statusStats} />
+                <AgeDistributionChart data={stats.ageStats} />
+              </div>
+              <Card className="border-none shadow-lg md:col-span-1">
+                 <CardHeader>
+                    <CardTitle>City Health</CardTitle>
+                    <CardDescription>Live MCII Aggregates</CardDescription>
+                 </CardHeader>
+                 <CardContent className="space-y-6">
+                    <div>
+                        <p className="text-xs font-bold text-muted-foreground uppercase">Overall Satisfaction</p>
+                        <p className="text-3xl font-bold">4.2 / 5.0</p>
+                        <Badge className="bg-green-100 text-green-700 mt-1">+0.4% MoM</Badge>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-muted-foreground uppercase">Budget Compliance</p>
+                        <p className="text-3xl font-bold">94.2%</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-muted-foreground uppercase">Avg. Evidence Rate</p>
+                        <p className="text-3xl font-bold">100%</p>
+                        <p className="text-[10px] text-muted-foreground">Mandatory Closure Applied</p>
+                    </div>
+                 </CardContent>
+              </Card>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );
-}
-
-function Button({ children, className, variant, ...props }: any) {
-  const base = "px-4 py-2 font-bold transition-all disabled:opacity-50";
-  const variants: any = {
-    default: "bg-primary text-white hover:bg-primary/90",
-    outline: "border border-input hover:bg-muted"
-  };
-  return <button className={`${base} ${variants[variant || 'default']} ${className}`} {...props}>{children}</button>;
 }
