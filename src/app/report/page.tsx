@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -8,20 +9,27 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Camera, Mic, MapPin, Send, Loader2, CheckCircle2 } from "lucide-react";
-import { WARDS, CATEGORIES } from "@/lib/constants";
+import { WARDS, CATEGORIES, SLA_DEADLINES } from "@/lib/constants";
 import { automatedIssueCategorization } from "@/ai/flows/automated-issue-categorization";
 import { useToast } from "@/hooks/use-toast";
+import { useFirestore, useUser } from "@/firebase";
+import { collection, doc, writeBatch, serverTimestamp } from "firebase/firestore";
+import { addHours } from "date-fns";
 
 export default function ReportPage() {
+  const { user } = useUser();
+  const db = useFirestore();
+  const { toast } = useToast();
+
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [ticketId, setTicketId] = useState("");
+  
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [ward, setWard] = useState("");
   const [category, setCategory] = useState("");
-  const { toast } = useToast();
 
   const handleAutoCategorize = async () => {
     if (!description) {
@@ -49,13 +57,65 @@ export default function ReportPage() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) {
+      toast({ title: "Auth Required", description: "Please login to report issues.", variant: "destructive" });
+      return;
+    }
+
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const batch = writeBatch(db);
+      const issueId = `MDU-${Math.floor(1000 + Math.random() * 9000)}`;
+      const now = new Date();
+      const deadlineHours = SLA_DEADLINES[category] || 72;
+      const deadline = addHours(now, deadlineHours);
+
+      const issueData = {
+        id: issueId,
+        title: description.substring(0, 50) + "...",
+        description,
+        reportedByUserId: user.uid,
+        wardId: ward,
+        issueCategoryId: category,
+        reportedAt: now.toISOString(),
+        gpsCoordinates: "10.7904,78.7047", // Mock GPS for prototype
+        status: "Created",
+        calculatedDisplayStatus: "Yellow",
+        isSlaBreached: false,
+        resolutionDeadline: deadline.toISOString(),
+        reopenCount: 0,
+        supportCount: 0,
+        isGovernanceIntegrityRisk: false,
+        isOfflineReport: false,
+        language: "en",
+        autoDetectedWard: false,
+        beforeImage: `https://picsum.photos/seed/${issueId}/400/300`
+      };
+
+      // 1. Master collection
+      const masterRef = doc(db, "issues_all", issueId);
+      batch.set(masterRef, issueData);
+
+      // 2. Citizen scoped collection
+      const citizenRef = doc(db, "user_profiles", user.uid, "reported_issues", issueId);
+      batch.set(citizenRef, issueData);
+
+      // 3. Ward scoped collection
+      const wardRef = doc(db, "wards", ward, "issues_for_ward_officers", issueId);
+      batch.set(wardRef, issueData);
+
+      await batch.commit();
+      
+      setTicketId(issueId);
       setSubmitted(true);
-    }, 1500);
+    } catch (err: any) {
+      console.error(err);
+      toast({ title: "Submission Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (submitted) {
@@ -68,7 +128,7 @@ export default function ReportPage() {
           </div>
           <h1 className="text-3xl font-headline font-bold mb-4">Issue Reported Successfully</h1>
           <p className="text-muted-foreground mb-8 max-w-md">
-            Your ticket <strong>#MDU-9821</strong> has been created. An acknowledgement has been sent via SMS. You can track status in your dashboard.
+            Your ticket <strong>#{ticketId}</strong> has been created. An acknowledgement has been sent via SMS. You can track status in your dashboard.
           </p>
           <div className="flex gap-4">
             <Button asChild><a href="/">Back Home</a></Button>

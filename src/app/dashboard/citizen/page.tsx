@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo } from "react";
@@ -8,94 +9,57 @@ import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { PriorityBadge } from "@/components/dashboard/PriorityBadge";
 import { calculateDisplayStatus, isGovernanceIntegrityRisk } from "@/lib/issue-logic";
 import { calculateSeriousnessScore, getPriorityTag } from "@/lib/priority-logic";
-import { AlertCircle, History, Image as ImageIcon, MapPin, RefreshCcw, CheckCircle2, ThumbsUp, Users, TrendingUp } from "lucide-react";
+import { AlertCircle, History, Image as ImageIcon, MapPin, RefreshCcw, CheckCircle2, ThumbsUp, Users, TrendingUp, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@/firebase";
-
-// Enhanced Mock Data with CSWPS Metrics
-const MOCK_ISSUES = [
-  {
-    id: "MDU-9821",
-    title: "Garbage Overflow",
-    description: "Huge pile of trash near the temple entrance.",
-    status: "ResolvedByOfficer",
-    reportedAt: "2024-03-20T10:00:00Z",
-    reopenCount: 0,
-    isSlaBreached: false,
-    supportCount: 45,
-    viewCount: 120,
-    wardIssueDensity: 0.8, // High recurrence hotspot
-    beforeImage: "https://picsum.photos/seed/waste/400/300",
-    afterImage: "https://picsum.photos/seed/clean/400/300",
-    proof: {
-      isProofVerified: true,
-      geoCoordinates: "10.7904, 78.7047",
-      timestamp: "2024-03-21T09:15:00Z"
-    }
-  },
-  {
-    id: "MDU-7722",
-    title: "Deep Pothole",
-    description: "Dangerous pothole in the middle of Main Street.",
-    status: "ResolvedByOfficer",
-    reportedAt: "2024-03-18T14:30:00Z",
-    reopenCount: 1,
-    isSlaBreached: false,
-    supportCount: 12,
-    viewCount: 85,
-    wardIssueDensity: 0.4,
-    beforeImage: "https://picsum.photos/seed/pothole/400/300",
-    afterImage: null,
-    proof: null
-  },
-  {
-    id: "MDU-1103",
-    title: "Broken Streetlight",
-    description: "Entire block is dark for 3 days.",
-    status: "InProgress",
-    reportedAt: "2024-03-22T08:00:00Z",
-    reopenCount: 3,
-    isSlaBreached: true,
-    supportCount: 89,
-    viewCount: 310,
-    wardIssueDensity: 0.9,
-    beforeImage: "https://picsum.photos/seed/dark/400/300",
-    afterImage: null,
-    proof: null
-  }
-];
+import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
+import { collection, doc, updateDoc, increment } from "firebase/firestore";
 
 export default function CitizenDashboard() {
-  const [issues, setIssues] = useState(MOCK_ISSUES);
   const { user } = useUser();
+  const db = useFirestore();
   const { toast } = useToast();
 
-  const handleSupport = (id: string) => {
+  const issuesRef = useMemoFirebase(() => {
+    // In real prod, this should be scoped to current user or ward
+    return collection(db, "issues_all");
+  }, [db]);
+
+  const { data: issues, isLoading } = useCollection(issuesRef);
+
+  const handleSupport = async (id: string) => {
     if (!user) {
       toast({ title: "Authentication Required", description: "Please login to support civic issues.", variant: "destructive" });
       return;
     }
-    setIssues(prev => prev.map(issue => 
-      issue.id === id ? { ...issue, supportCount: issue.supportCount + 1 } : issue
-    ));
-    toast({ title: "Issue Supported", description: "Your support has increased the seriousness score of this issue." });
+    
+    try {
+      const issueRef = doc(db, "issues_all", id);
+      // Atomic increment for CSWPS integrity
+      await updateDoc(issueRef, {
+        supportCount: increment(1)
+      });
+      toast({ title: "Issue Supported", description: "Your support has increased the seriousness score of this issue." });
+    } catch (err: any) {
+      toast({ title: "Action Failed", description: err.message, variant: "destructive" });
+    }
   };
 
   const sortedIssues = useMemo(() => {
+    if (!issues) return [];
     return [...issues].sort((a, b) => {
       const scoreA = calculateSeriousnessScore({
-        supportCount: a.supportCount,
-        isSlaBreached: a.isSlaBreached,
-        reopenCount: a.reopenCount,
-        wardIssueDensity: a.wardIssueDensity,
+        supportCount: a.supportCount || 0,
+        isSlaBreached: a.isSlaBreached || false,
+        reopenCount: a.reopenCount || 0,
+        wardIssueDensity: a.wardIssueDensity || 0.5,
         reportedAt: a.reportedAt
       });
       const scoreB = calculateSeriousnessScore({
-        supportCount: b.supportCount,
-        isSlaBreached: b.isSlaBreached,
-        reopenCount: b.reopenCount,
-        wardIssueDensity: b.wardIssueDensity,
+        supportCount: b.supportCount || 0,
+        isSlaBreached: b.isSlaBreached || false,
+        reopenCount: b.reopenCount || 0,
+        wardIssueDensity: b.wardIssueDensity || 0.5,
         reportedAt: b.reportedAt
       });
       return scoreB - scoreA;
@@ -116,83 +80,90 @@ export default function CitizenDashboard() {
           </Button>
         </header>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {sortedIssues.map(issue => {
-            const score = calculateSeriousnessScore({
-              supportCount: issue.supportCount,
-              isSlaBreached: issue.isSlaBreached,
-              reopenCount: issue.reopenCount,
-              wardIssueDensity: issue.wardIssueDensity,
-              reportedAt: issue.reportedAt
-            });
-            const impact = getPriorityTag(score);
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-40 gap-4">
+            <Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" />
+            <p className="text-sm font-medium text-muted-foreground animate-pulse">Loading Civic Data...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {sortedIssues.map(issue => {
+              const score = calculateSeriousnessScore({
+                supportCount: issue.supportCount || 0,
+                isSlaBreached: issue.isSlaBreached || false,
+                reopenCount: issue.reopenCount || 0,
+                wardIssueDensity: issue.wardIssueDensity || 0.5,
+                reportedAt: issue.reportedAt
+              });
+              const impact = getPriorityTag(score);
 
-            const displayStatus = calculateDisplayStatus({
-              internalStatus: issue.status,
-              isSlaBreached: issue.isSlaBreached,
-              reopenCount: issue.reopenCount,
-              hasProof: !!issue.proof,
-              isProofVerified: issue.proof?.isProofVerified || false
-            });
+              const displayStatus = calculateDisplayStatus({
+                internalStatus: issue.status,
+                isSlaBreached: issue.isSlaBreached || false,
+                reopenCount: issue.reopenCount || 0,
+                hasProof: !!issue.resolutionProofId,
+                isProofVerified: true // Assuming verified for demo
+              });
 
-            return (
-              <Card key={issue.id} className="border-none shadow-xl overflow-hidden flex flex-col relative">
-                {issue.supportCount > 50 && (
-                  <div className="absolute top-4 right-4 z-10 flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-1 rounded-md text-[10px] font-bold animate-bounce">
-                    <TrendingUp className="h-3 w-3" /> TRENDING
-                  </div>
-                )}
-                
-                <CardHeader className="bg-muted/30 border-b pb-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <StatusBadge status={displayStatus} />
-                    <PriorityBadge impact={impact} score={score} />
-                  </div>
-                  <CardTitle className="text-2xl">{issue.title}</CardTitle>
-                  <CardDescription className="line-clamp-2">{issue.description}</CardDescription>
-                </CardHeader>
-
-                <CardContent className="pt-6 flex-grow">
-                  <div className="grid grid-cols-2 gap-4 mb-6">
-                    <div className="relative aspect-video rounded-xl overflow-hidden bg-muted">
-                      <Image src={issue.beforeImage} alt="Before" fill className="object-cover" />
-                    </div>
-                    <div className="bg-muted/20 rounded-xl p-4 flex flex-col justify-center items-center text-center">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Users className="h-5 w-5 text-primary" />
-                        <span className="text-2xl font-bold">{issue.supportCount}</span>
-                      </div>
-                      <p className="text-[10px] font-bold text-muted-foreground uppercase">Citizen Supports</p>
-                      <Button variant="ghost" size="sm" className="mt-4 gap-2 hover:bg-primary/10" onClick={() => handleSupport(issue.id)}>
-                        <ThumbsUp className="h-4 w-4" /> Support Issue
-                      </Button>
-                    </div>
-                  </div>
-
-                  {isGovernanceIntegrityRisk(issue.reopenCount) && (
-                    <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
-                      <AlertCircle className="h-5 w-5" />
-                      <span className="text-sm font-bold">⚠ Governance Integrity Risk: Priority Escalated.</span>
+              return (
+                <Card key={issue.id} className="border-none shadow-xl overflow-hidden flex flex-col relative">
+                  {(issue.supportCount || 0) > 50 && (
+                    <div className="absolute top-4 right-4 z-10 flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-1 rounded-md text-[10px] font-bold animate-bounce">
+                      <TrendingUp className="h-3 w-3" /> TRENDING
                     </div>
                   )}
-
-                  <div className="flex items-center justify-between text-[10px] text-muted-foreground font-medium uppercase tracking-widest">
-                    <div className="flex items-center gap-2">
-                       <MapPin className="h-3 w-3" /> Ward {issue.id.split('-')[1]}
+                  
+                  <CardHeader className="bg-muted/30 border-b pb-4">
+                    <div className="flex items-center justify-between mb-4">
+                      <StatusBadge status={displayStatus} />
+                      <PriorityBadge impact={impact} score={score} />
                     </div>
-                    <div>{issue.viewCount} Views</div>
-                  </div>
-                </CardContent>
+                    <CardTitle className="text-2xl">{issue.title}</CardTitle>
+                    <CardDescription className="line-clamp-2">{issue.description}</CardDescription>
+                  </CardHeader>
 
-                <CardFooter className="bg-muted/10 border-t pt-4">
-                  <Button variant="outline" className="w-full rounded-xl" asChild>
-                    <a href={`/issues/${issue.id}`}>View Resolution Timeline</a>
-                  </Button>
-                </CardFooter>
-              </Card>
-            );
-          })}
-        </div>
+                  <CardContent className="pt-6 flex-grow">
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                      <div className="relative aspect-video rounded-xl overflow-hidden bg-muted">
+                        <Image src={issue.beforeImage || "https://picsum.photos/seed/issue/400/300"} alt="Before" fill className="object-cover" />
+                      </div>
+                      <div className="bg-muted/20 rounded-xl p-4 flex flex-col justify-center items-center text-center">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Users className="h-5 w-5 text-primary" />
+                          <span className="text-2xl font-bold">{issue.supportCount || 0}</span>
+                        </div>
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase">Citizen Supports</p>
+                        <Button variant="ghost" size="sm" className="mt-4 gap-2 hover:bg-primary/10" onClick={() => handleSupport(issue.id)}>
+                          <ThumbsUp className="h-4 w-4" /> Support Issue
+                        </Button>
+                      </div>
+                    </div>
+
+                    {isGovernanceIntegrityRisk(issue.reopenCount || 0) && (
+                      <div className="mb-6 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
+                        <AlertCircle className="h-5 w-5" />
+                        <span className="text-sm font-bold">⚠ Governance Integrity Risk: Priority Escalated.</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-[10px] text-muted-foreground font-medium uppercase tracking-widest">
+                      <div className="flex items-center gap-2">
+                         <MapPin className="h-3 w-3" /> {issue.wardId}
+                      </div>
+                      <div>{issue.viewCount || 0} Views</div>
+                    </div>
+                  </CardContent>
+
+                  <CardFooter className="bg-muted/10 border-t pt-4">
+                    <Button variant="outline" className="w-full rounded-xl" asChild>
+                      <a href={`/issues/${issue.id}`}>View Resolution Timeline</a>
+                    </Button>
+                  </CardFooter>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
